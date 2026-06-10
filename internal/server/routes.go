@@ -38,6 +38,19 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /Users/{id}/Views", s.requireAuth(s.handleUserViews))
 	mux.HandleFunc("GET /UserViews", s.requireAuth(s.handleUserViews))
 
+	// --- Library browse (authenticated) ---
+	mux.HandleFunc("GET /Items", s.requireAuth(s.handleItems))
+	mux.HandleFunc("GET /Items/{itemId}", s.requireAuth(s.handleItemDetail))
+	mux.HandleFunc("GET /Items/Latest", s.requireAuth(s.handleItemsLatest))
+	mux.HandleFunc("GET /Users/{userId}/Items", s.requireAuth(s.handleItems))
+	mux.HandleFunc("GET /Users/{userId}/Items/Latest", s.requireAuth(s.handleItemsLatest))
+	mux.HandleFunc("GET /Users/{userId}/Items/{itemId}", s.requireAuth(s.handleItemDetail))
+	mux.HandleFunc("GET /Shows/NextUp", s.requireAuth(s.handleNextUp))
+
+	// --- Library administration ---
+	mux.HandleFunc("GET /Library/VirtualFolders", s.requireAdmin(s.handleVirtualFolders))
+	mux.HandleFunc("POST /Library/Refresh", s.requireAdmin(s.handleLibraryRefresh))
+
 	// --- Display preferences (authenticated) ---
 	mux.HandleFunc("GET /DisplayPreferences/{id}", s.requireAuth(s.handleGetDisplayPreferences))
 	mux.HandleFunc("POST /DisplayPreferences/{id}", s.requireAuth(s.handleUpdateDisplayPreferences))

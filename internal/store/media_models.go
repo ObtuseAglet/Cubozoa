@@ -1,0 +1,33 @@
+package store
+
+import "time"
+
+// Library is a top-level media collection (e.g. "Movies"), backed by a
+// directory on disk. It maps to a Jellyfin "CollectionFolder" / view.
+type Library struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"` // CollectionType: movies, tvshows, music, homevideos, mixed
+	Path      string    `json:"path"`
+	ItemCount int       `json:"item_count"`
+	CreatedAt time.Time `json:"created_at"`
+	ScannedAt time.Time `json:"scanned_at"`
+}
+
+// MediaItem is a single browsable entry produced by scanning a library. The
+// on-disk Path is kept internal: it is never exposed to non-admin clients, so a
+// compromised or curious account cannot map the server's filesystem layout.
+type MediaItem struct {
+	ID             string    `json:"id"`
+	LibraryID      string    `json:"library_id"`
+	ParentID       string    `json:"parent_id"`
+	Name           string    `json:"name"`
+	SortName       string    `json:"sort_name"`
+	Type           string    `json:"type"`       // Movie, Episode, Video, Audio, Folder
+	MediaType      string    `json:"media_type"` // Video, Audio
+	Path           string    `json:"path"`
+	Container      string    `json:"container"` // file extension without the dot
+	ProductionYear int       `json:"production_year,omitempty"`
+	SizeBytes      int64     `json:"size_bytes"`
+	DateCreated    time.Time `json:"date_created"`
+}

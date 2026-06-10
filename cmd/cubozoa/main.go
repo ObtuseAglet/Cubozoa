@@ -15,6 +15,7 @@ import (
 
 	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/config"
+	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/server"
 	"github.com/obtuseaglet/cubozoa/internal/store"
 )
@@ -62,7 +63,22 @@ func run(log *slog.Logger) error {
 		announceAdmin(log, cfg.AdminUsername, generated)
 	}
 
-	srv := server.New(cfg, st, authSvc, log)
+	// Libraries: register any present under the configured media directory,
+	// then scan in the background so startup stays fast even for large media
+	// collections. Browse results fill in as scans complete.
+	mediaSvc := media.NewService(st, log)
+	if cfg.MediaDir != "" {
+		if err := mediaSvc.SyncLibrariesFromMediaDir(cfg.MediaDir); err != nil {
+			log.Warn("syncing libraries from media dir", "dir", cfg.MediaDir, "err", err)
+		}
+	}
+	go func() {
+		if err := mediaSvc.ScanAll(); err != nil {
+			log.Warn("initial library scan", "err", err)
+		}
+	}()
+
+	srv := server.New(cfg, st, authSvc, mediaSvc, log)
 
 	httpServer := &http.Server{
 		Addr:    cfg.BindAddress,

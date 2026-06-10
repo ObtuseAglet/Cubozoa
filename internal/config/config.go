@@ -24,6 +24,11 @@ type Config struct {
 	// DataDir is where Cubozoa persists its datastore and server identity.
 	DataDir string
 
+	// MediaDir, if set, is a root directory whose immediate subdirectories are
+	// auto-registered as libraries on startup (the Plex-like "point it at a
+	// folder" experience). Library type is inferred from the folder name.
+	MediaDir string
+
 	// ServerName is the friendly name shown to clients on the login screen.
 	ServerName string
 
@@ -49,6 +54,7 @@ func Load() (*Config, error) {
 	c := &Config{
 		BindAddress:    env("CUBOZOA_BIND_ADDRESS", ":8096"),
 		DataDir:        env("CUBOZOA_DATA_DIR", defaultDataDir()),
+		MediaDir:       env("CUBOZOA_MEDIA_DIR", ""),
 		ServerName:     env("CUBOZOA_SERVER_NAME", defaultServerName()),
 		PublicBaseURL:  strings.TrimRight(env("CUBOZOA_PUBLIC_BASE_URL", ""), "/"),
 		AdminUsername:  env("CUBOZOA_ADMIN_USERNAME", "admin"),
@@ -65,6 +71,12 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: resolving data dir: %w", err)
 	}
 	c.DataDir = abs
+
+	if c.MediaDir != "" {
+		if abs, err := filepath.Abs(c.MediaDir); err == nil {
+			c.MediaDir = abs
+		}
+	}
 
 	return c, nil
 }

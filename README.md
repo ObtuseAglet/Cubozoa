@@ -24,13 +24,14 @@ rather than an afterthought.
 
 ## Status
 
-Early development. **Milestone 1 is complete:** an unmodified Jellyfin client can
-discover Cubozoa, render the login screen, authenticate, and hold an
-authenticated session. See [the roadmap](#roadmap) for what is next.
+Early development. **Milestones 1 and 2 are complete:** an unmodified Jellyfin
+client can discover Cubozoa, log in, and **browse libraries** that Cubozoa scans
+from disk. Point it at a folder of movies and the items show up in the client,
+with titles and years parsed from filenames. See [the roadmap](#roadmap) for
+what is next.
 
-This is not yet a usable media server — there is no library scanning or
-playback yet. It is a solid, tested foundation with the compatibility and
-security model proven end-to-end.
+Playback is not implemented yet (that is M4), so items browse but do not yet
+stream. The compatibility and security model are proven end-to-end with tests.
 
 ## Quick start
 
@@ -42,7 +43,15 @@ go build -o cubozoa ./cmd/cubozoa
 
 # Run it (binds :8096, the Jellyfin default port)
 ./cubozoa
+
+# ...or point it at your media and libraries are discovered automatically:
+CUBOZOA_MEDIA_DIR=/srv/media ./cubozoa
 ```
+
+With `CUBOZOA_MEDIA_DIR` set, each immediate subdirectory becomes a library —
+name a folder `Movies` or `TV Shows` and Cubozoa infers its type. Libraries are
+(re)scanned in the background at startup; trigger a manual rescan any time with
+`POST /Library/Refresh`.
 
 On first run with no configured password, Cubozoa creates an `admin` account and
 prints a generated password **once** — capture it. Then point any Jellyfin
@@ -56,6 +65,7 @@ All configuration is via environment variables; every one has a safe default.
 | --- | --- | --- |
 | `CUBOZOA_BIND_ADDRESS` | `:8096` | Listen address (`host:port`). |
 | `CUBOZOA_DATA_DIR` | OS config dir `/cubozoa` | Where the datastore and server identity live. |
+| `CUBOZOA_MEDIA_DIR` | _(empty)_ | Root folder whose subdirectories are auto-registered as libraries (type inferred from the folder name). |
 | `CUBOZOA_SERVER_NAME` | hostname | Friendly name shown on the login screen. |
 | `CUBOZOA_PUBLIC_BASE_URL` | _(empty)_ | Address advertised to clients; otherwise reflected from the request. |
 | `CUBOZOA_ADMIN_USERNAME` | `admin` | Username for the seeded first-run admin. |
@@ -104,8 +114,10 @@ Highlights enforced in code today:
 - [x] **M1 — Client handshake & login.** Discovery, branding, full
       authentication and session lifecycle. Existing Jellyfin clients connect
       and log in. *(done)*
-- [ ] **M2 — Libraries & browse.** Filesystem scanner, media/metadata model,
-      `Items`/`Views` endpoints so clients can browse a library.
+- [x] **M2 — Libraries & browse.** Filesystem scanner, media/metadata model,
+      and `Items`/`Views` endpoints so clients can browse a library. Libraries
+      auto-register from `CUBOZOA_MEDIA_DIR`; titles/years are parsed from
+      filenames. *(done)*
 - [ ] **M3 — Images & metadata.** Artwork serving and external metadata
       providers.
 - [ ] **M4 — Playback.** Direct play, then HLS transcoding via ffmpeg.

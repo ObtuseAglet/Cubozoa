@@ -9,6 +9,7 @@ import (
 
 	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/config"
+	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/store"
 )
 
@@ -17,17 +18,19 @@ type Server struct {
 	cfg   *config.Config
 	store store.Store
 	auth  *auth.Service
+	media *media.Service
 	log   *slog.Logger
 
 	limiter *rateLimiter
 }
 
 // New constructs a Server.
-func New(cfg *config.Config, st store.Store, authSvc *auth.Service, log *slog.Logger) *Server {
+func New(cfg *config.Config, st store.Store, authSvc *auth.Service, mediaSvc *media.Service, log *slog.Logger) *Server {
 	return &Server{
 		cfg:     cfg,
 		store:   st,
 		auth:    authSvc,
+		media:   mediaSvc,
 		log:     log,
 		limiter: newRateLimiter(),
 	}

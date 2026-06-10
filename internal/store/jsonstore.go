@@ -17,19 +17,23 @@ import (
 // atomically (write-temp-then-rename) so a crash cannot leave a half-written
 // datastore.
 type jsonStore struct {
-	mu       sync.RWMutex
-	path     string
-	serverID string
-	users    map[string]*User // keyed by user ID
-	sessions map[string]*Session
+	mu        sync.RWMutex
+	path      string
+	serverID  string
+	users     map[string]*User // keyed by user ID
+	sessions  map[string]*Session
+	libraries map[string]*Library   // keyed by library ID
+	items     map[string]*MediaItem // keyed by item ID
 }
 
 // persisted is the on-disk schema. Versioned so future migrations are possible.
 type persisted struct {
-	Version  int                 `json:"version"`
-	ServerID string              `json:"server_id"`
-	Users    map[string]*User    `json:"users"`
-	Sessions map[string]*Session `json:"sessions"`
+	Version   int                   `json:"version"`
+	ServerID  string                `json:"server_id"`
+	Users     map[string]*User      `json:"users"`
+	Sessions  map[string]*Session   `json:"sessions"`
+	Libraries map[string]*Library   `json:"libraries"`
+	Items     map[string]*MediaItem `json:"items"`
 }
 
 const schemaVersion = 1
@@ -41,9 +45,11 @@ func OpenJSON(dataDir string) (Store, error) {
 	}
 
 	s := &jsonStore{
-		path:     filepath.Join(dataDir, "cubozoa.json"),
-		users:    make(map[string]*User),
-		sessions: make(map[string]*Session),
+		path:      filepath.Join(dataDir, "cubozoa.json"),
+		users:     make(map[string]*User),
+		sessions:  make(map[string]*Session),
+		libraries: make(map[string]*Library),
+		items:     make(map[string]*MediaItem),
 	}
 
 	if err := s.load(); err != nil {
@@ -85,6 +91,12 @@ func (s *jsonStore) load() error {
 	if p.Sessions != nil {
 		s.sessions = p.Sessions
 	}
+	if p.Libraries != nil {
+		s.libraries = p.Libraries
+	}
+	if p.Items != nil {
+		s.items = p.Items
+	}
 	return nil
 }
 
@@ -92,10 +104,12 @@ func (s *jsonStore) load() error {
 // the write lock.
 func (s *jsonStore) flushLocked() error {
 	p := persisted{
-		Version:  schemaVersion,
-		ServerID: s.serverID,
-		Users:    s.users,
-		Sessions: s.sessions,
+		Version:   schemaVersion,
+		ServerID:  s.serverID,
+		Users:     s.users,
+		Sessions:  s.sessions,
+		Libraries: s.libraries,
+		Items:     s.items,
 	}
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
@@ -221,6 +235,129 @@ func (s *jsonStore) TouchSession(id string) error {
 		return ErrNotFound
 	}
 	sess.LastActivity = time.Now().UTC()
+	return s.flushLocked()
+}
+
+func (s *jsonStore) CreateLibrary(l *Library) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, existing := range s.libraries {
+		if existing.Path == l.Path {
+			return ErrConflict
+		}
+	}
+	clone := *l
+	s.libraries[l.ID] = &clone
+	return s.flushLocked()
+}
+
+func (s *jsonStore) GetLibrary(id string) (*Library, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	l, ok := s.libraries[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	clone := *l
+	return &clone, nil
+}
+
+func (s *jsonStore) GetLibraryByPath(path string) (*Library, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, l := range s.libraries {
+		if l.Path == path {
+			clone := *l
+			return &clone, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func (s *jsonStore) ListLibraries() ([]*Library, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*Library, 0, len(s.libraries))
+	for _, l := range s.libraries {
+		clone := *l
+		out = append(out, &clone)
+	}
+	return out, nil
+}
+
+func (s *jsonStore) DeleteLibrary(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.libraries[id]; !ok {
+		return ErrNotFound
+	}
+	delete(s.libraries, id)
+	for itemID, it := range s.items {
+		if it.LibraryID == id {
+			delete(s.items, itemID)
+		}
+	}
+	return s.flushLocked()
+}
+
+func (s *jsonStore) GetItem(id string) (*MediaItem, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	it, ok := s.items[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	clone := *it
+	return &clone, nil
+}
+
+func (s *jsonStore) ListItemsByLibrary(libraryID string) ([]*MediaItem, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*MediaItem, 0)
+	for _, it := range s.items {
+		if it.LibraryID == libraryID {
+			clone := *it
+			out = append(out, &clone)
+		}
+	}
+	return out, nil
+}
+
+func (s *jsonStore) AllItems() ([]*MediaItem, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*MediaItem, 0, len(s.items))
+	for _, it := range s.items {
+		clone := *it
+		out = append(out, &clone)
+	}
+	return out, nil
+}
+
+func (s *jsonStore) ReplaceLibraryItems(libraryID string, items []*MediaItem) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	lib, ok := s.libraries[libraryID]
+	if !ok {
+		return ErrNotFound
+	}
+
+	// Drop the library's existing items, then insert the fresh set.
+	for itemID, it := range s.items {
+		if it.LibraryID == libraryID {
+			delete(s.items, itemID)
+		}
+	}
+	for _, it := range items {
+		clone := *it
+		clone.LibraryID = libraryID
+		s.items[it.ID] = &clone
+	}
+
+	lib.ItemCount = len(items)
+	lib.ScannedAt = time.Now().UTC()
 	return s.flushLocked()
 }
 

@@ -69,14 +69,22 @@ func (s *Server) handleUsersList(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, out)
 }
 
-// GET /Users/{id}/Views and GET /UserViews — the user's library views. No
-// libraries exist yet (that is milestone 2), so this returns an empty result.
-// Returning a well-formed empty QueryResult lets clients reach the home screen
-// rather than erroring.
+// GET /Users/{id}/Views and GET /UserViews — the user's library views, one
+// CollectionFolder per registered library.
 func (s *Server) handleUserViews(w http.ResponseWriter, r *http.Request) {
-	s.writeJSON(w, http.StatusOK, jellyfin.QueryResult[any]{
-		Items:            []any{},
-		TotalRecordCount: 0,
+	libs, err := s.media.Libraries()
+	if err != nil {
+		s.log.Error("listing libraries", "err", err)
+		s.writeError(w, http.StatusInternalServerError)
+		return
+	}
+	views := make([]jellyfin.BaseItemDto, 0, len(libs))
+	for _, lib := range libs {
+		views = append(views, s.libraryToDto(lib))
+	}
+	s.writeJSON(w, http.StatusOK, jellyfin.QueryResult[jellyfin.BaseItemDto]{
+		Items:            views,
+		TotalRecordCount: len(views),
 		StartIndex:       0,
 	})
 }

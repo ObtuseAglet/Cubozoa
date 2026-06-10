@@ -12,6 +12,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/config"
 	"github.com/obtuseaglet/cubozoa/internal/jellyfin"
+	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/store"
 )
 
@@ -33,7 +34,8 @@ func newTestServer(t *testing.T) (*httptest.Server, string) {
 	}
 
 	cfg := &config.Config{ServerName: "Test", BindAddress: ":8096"}
-	srv := New(cfg, st, authSvc, log)
+	mediaSvc := media.NewService(st, log)
+	srv := New(cfg, st, authSvc, mediaSvc, log)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts, password

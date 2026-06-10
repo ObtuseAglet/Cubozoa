@@ -34,6 +34,22 @@ type Store interface {
 	DeleteSession(id string) error
 	TouchSession(id string) error
 
+	// Libraries
+	CreateLibrary(l *Library) error
+	GetLibrary(id string) (*Library, error)
+	GetLibraryByPath(path string) (*Library, error)
+	ListLibraries() ([]*Library, error)
+	DeleteLibrary(id string) error
+
+	// Media items
+	GetItem(id string) (*MediaItem, error)
+	ListItemsByLibrary(libraryID string) ([]*MediaItem, error)
+	AllItems() ([]*MediaItem, error)
+	// ReplaceLibraryItems atomically swaps the full item set for a library and
+	// updates the library's item count and scan time in a single flush. This is
+	// how a re-scan publishes its results without leaving partial state.
+	ReplaceLibraryItems(libraryID string, items []*MediaItem) error
+
 	// Close flushes and releases any resources held by the store.
 	Close() error
 }

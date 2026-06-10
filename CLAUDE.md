@@ -25,6 +25,7 @@ internal/config    env-driven config, safe defaults
 internal/security  argon2id, secure tokens, constant-time compare  (crypto lives ONLY here)
 internal/store     Store interface + JSON impl; swap for SQL later without touching callers
 internal/auth      seeding, credential verification, session lifecycle
+internal/media     library scanner + browse service (filesystem -> items)
 internal/jellyfin  wire DTOs + auth-header parsing (the compatibility contract)
 internal/server    routing, middleware, handlers
 ```
@@ -52,6 +53,12 @@ cycles or let handlers reach past `auth` into crypto details.
 
 ## Roadmap context
 
-M1 (client handshake + login) is done. Next is M2: a filesystem scanner, a
-media/metadata model, and `Items`/`Views` endpoints so clients can browse a
-library. `handleUserViews` currently returns an empty result as a placeholder.
+M1 (client handshake + login) and M2 (libraries + browse) are done. Libraries
+auto-register from `CUBOZOA_MEDIA_DIR`; `internal/media` scans them into items
+and serves `Items`/`Views`/`Latest`. Item DTOs deliberately omit the filesystem
+`Path` — never leak it to clients.
+
+Next is M3 (images + external metadata), then M4 (playback: direct play, then
+HLS transcoding via ffmpeg). When adding playback, `MediaItem.Path` is the
+on-disk source; serve it only to authenticated users and never expose the raw
+path in a DTO.
