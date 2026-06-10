@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Verify modules are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test (race + coverage)
+        run: go test -race -coverprofile=coverage.out ./...
+
+      - name: Build
+        run: go build ./...
