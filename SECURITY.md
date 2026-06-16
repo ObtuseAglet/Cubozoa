@@ -54,6 +54,8 @@ should not merge.
 | Atomic, 0600-permissioned datastore writes | ✅ |
 | Item DTOs never expose on-disk paths to clients | ✅ |
 | Image requests resolve server-side to vetted files within the library root | ✅ |
+| Stream requests resolve by item ID to a vetted file in the library root (no client path) | ✅ |
+| Media streaming requires authentication | ✅ |
 | TLS termination / HTTPS guidance | ⏳ planned |
 | Account lockout / 2FA | ⏳ planned |
 | Audit logging | ⏳ planned |

@@ -24,14 +24,15 @@ rather than an afterthought.
 
 ## Status
 
-Early development. **Milestones 1–3 are complete:** an unmodified Jellyfin
-client can discover Cubozoa, log in, and **browse libraries** that Cubozoa scans
-from disk — complete with **poster and backdrop artwork** discovered next to the
-media files. Point it at a folder of movies and the items show up in the client
-with titles, years, and images. See [the roadmap](#roadmap) for what is next.
+Early development, but already a working media server for direct-play content.
+**Milestones 1–4 (direct play) are complete:** an unmodified Jellyfin client can
+discover Cubozoa, log in, **browse libraries** scanned from disk (with **poster
+and backdrop artwork**), and **play media** via direct play with full seek
+support (HTTP Range). See [the roadmap](#roadmap) for what is next.
 
-Playback is not implemented yet (that is M4), so items browse but do not yet
-stream. The compatibility and security model are proven end-to-end with tests.
+Transcoding is not implemented yet, so playback works for media a client can
+play natively; format conversion via ffmpeg is the next milestone. The
+compatibility and security model are proven end-to-end with tests.
 
 ## Quick start
 
@@ -124,7 +125,13 @@ Highlights enforced in code today:
       requests. *(done)*
 - [ ] **M3b — External metadata.** Optional TMDb/TVDb providers to enrich
       items and fetch artwork when none is present on disk.
-- [ ] **M4 — Playback.** Direct play, then HLS transcoding via ffmpeg.
+- [x] **M4 — Direct-play playback.** `PlaybackInfo` negotiation and raw media
+      streaming via `/Videos/{id}/stream` with HTTP Range (seek) support, plus
+      playback progress reporting. *(done)*
+- [ ] **M4b — Transcoding.** HLS transcoding via ffmpeg for formats a client
+      cannot play directly, plus ffprobe-sourced stream metadata.
+- [ ] **M4c — Resume & watched state.** Persist per-user playback position and
+      played status so clients can resume.
 - [ ] **M5 — Multi-user & sharing.** User management UI, per-library access,
       the Plex-grade onboarding experience.
 

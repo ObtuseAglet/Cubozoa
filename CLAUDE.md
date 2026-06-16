@@ -53,15 +53,17 @@ cycles or let handlers reach past `auth` into crypto details.
 
 ## Roadmap context
 
-M1 (login), M2 (libraries + browse), and M3 (local artwork) are done. Libraries
-auto-register from `CUBOZOA_MEDIA_DIR`; `internal/media` scans them into items
-and serves `Items`/`Views`/`Latest`. Posters/backdrops found next to media are
-served from `/Items/{id}/Images/{type}` (see `media/images.go`). Item DTOs
-deliberately omit the filesystem `Path` — never leak it to clients, and image
-requests carry only an item ID + type, resolved server-side to a vetted file
-inside the library root (never a client-supplied path).
+M1 (login), M2 (libraries + browse), M3 (local artwork), and M4 (direct-play
+playback) are done. Libraries auto-register from `CUBOZOA_MEDIA_DIR`;
+`internal/media` scans them into items and serves `Items`/`Views`/`Latest`.
+Posters/backdrops found next to media are served from `/Items/{id}/Images/{type}`
+(see `media/images.go`). Playback: `/Items/{id}/PlaybackInfo` advertises direct
+play and `/Videos/{id}/stream` serves raw bytes via `http.ServeContent` (Range
+seek support); `media.ItemStream`/`ItemImage` both resolve an item ID to a file
+and re-check it lives inside the library root (`withinRoot`) — clients never
+supply a path. Item DTOs and MediaSources deliberately omit the filesystem
+`Path`.
 
-Next is M3b (optional external metadata: TMDb/TVDb), then M4 (playback: direct
-play, then HLS transcoding via ffmpeg). When adding playback, `MediaItem.Path`
-is the on-disk source; serve it only to authenticated users and never expose the
-raw path in a DTO.
+Next is M4b (HLS transcoding via ffmpeg + ffprobe stream metadata) and M4c
+(resume/watched state — needs a per-user item-data store). M3b (optional
+external metadata: TMDb/TVDb) is also open.

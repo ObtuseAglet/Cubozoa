@@ -182,6 +182,37 @@ func withinRoot(root, p string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// Stream describes the on-disk source for direct play.
+type Stream struct {
+	Path        string
+	Container   string
+	ContentType string
+	Size        int64
+}
+
+// ItemStream resolves an item to its on-disk media file for direct play,
+// applying the same library-root containment check as image serving so a
+// stream request can never read a file outside a known library.
+func (s *Service) ItemStream(itemID string) (Stream, error) {
+	it, err := s.store.GetItem(itemID)
+	if err != nil {
+		return Stream{}, err
+	}
+	if it.Path == "" {
+		return Stream{}, store.ErrNotFound
+	}
+	if lib, err := s.store.GetLibrary(it.LibraryID); err == nil && !withinRoot(lib.Path, it.Path) {
+		s.log.Warn("rejecting stream outside library root", "item", itemID, "path", it.Path)
+		return Stream{}, store.ErrNotFound
+	}
+	return Stream{
+		Path:        it.Path,
+		Container:   it.Container,
+		ContentType: StreamContentType(it.Container),
+		Size:        it.SizeBytes,
+	}, nil
+}
+
 // BrowseQuery describes a browse request. Zero values are sensible defaults.
 type BrowseQuery struct {
 	ParentID         string   // a library ID (or item folder ID)

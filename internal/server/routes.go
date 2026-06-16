@@ -47,6 +47,15 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /Users/{userId}/Items/{itemId}", s.requireAuth(s.handleItemDetail))
 	mux.HandleFunc("GET /Shows/NextUp", s.requireAuth(s.handleNextUp))
 
+	// --- Playback (authenticated) ---
+	mux.HandleFunc("GET /Items/{itemId}/PlaybackInfo", s.requireAuth(s.handlePlaybackInfo))
+	mux.HandleFunc("POST /Items/{itemId}/PlaybackInfo", s.requireAuth(s.handlePlaybackInfo))
+	mux.HandleFunc("GET /Videos/{id}/{file}", s.requireAuth(s.handleVideoStream))
+	mux.HandleFunc("HEAD /Videos/{id}/{file}", s.requireAuth(s.handleVideoStream))
+	mux.HandleFunc("POST /Sessions/Playing", s.requireAuth(s.handlePlaybackReport))
+	mux.HandleFunc("POST /Sessions/Playing/Progress", s.requireAuth(s.handlePlaybackReport))
+	mux.HandleFunc("POST /Sessions/Playing/Stopped", s.requireAuth(s.handlePlaybackReport))
+
 	// --- Item images (authenticated; clients append ?api_key=) ---
 	// Registered for GET and HEAD, with and without the optional image index.
 	mux.HandleFunc("GET /Items/{id}/Images/{type}", s.requireAuth(s.handleItemImage))
