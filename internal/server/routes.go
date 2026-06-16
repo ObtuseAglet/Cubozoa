@@ -47,6 +47,13 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /Users/{userId}/Items/{itemId}", s.requireAuth(s.handleItemDetail))
 	mux.HandleFunc("GET /Shows/NextUp", s.requireAuth(s.handleNextUp))
 
+	// --- Item images (authenticated; clients append ?api_key=) ---
+	// Registered for GET and HEAD, with and without the optional image index.
+	mux.HandleFunc("GET /Items/{id}/Images/{type}", s.requireAuth(s.handleItemImage))
+	mux.HandleFunc("HEAD /Items/{id}/Images/{type}", s.requireAuth(s.handleItemImage))
+	mux.HandleFunc("GET /Items/{id}/Images/{type}/{index}", s.requireAuth(s.handleItemImage))
+	mux.HandleFunc("HEAD /Items/{id}/Images/{type}/{index}", s.requireAuth(s.handleItemImage))
+
 	// --- Library administration ---
 	mux.HandleFunc("GET /Library/VirtualFolders", s.requireAdmin(s.handleVirtualFolders))
 	mux.HandleFunc("POST /Library/Refresh", s.requireAdmin(s.handleLibraryRefresh))

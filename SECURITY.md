@@ -52,6 +52,8 @@ should not merge.
 | Panic recovery middleware | ✅ |
 | Spoof-resistant client IP (proxy headers opt-in) | ✅ |
 | Atomic, 0600-permissioned datastore writes | ✅ |
+| Item DTOs never expose on-disk paths to clients | ✅ |
+| Image requests resolve server-side to vetted files within the library root | ✅ |
 | TLS termination / HTTPS guidance | ⏳ planned |
 | Account lockout / 2FA | ⏳ planned |
 | Audit logging | ⏳ planned |

@@ -42,6 +42,14 @@ func (s *Server) itemToDto(it *store.MediaItem) jellyfin.BaseItemDto {
 	if !it.DateCreated.IsZero() {
 		dto.DateCreated = it.DateCreated.Format(time.RFC3339Nano)
 	}
+	// Advertise available artwork by tag so clients know to request it (and can
+	// cache-bust). The image bytes are served from /Items/{id}/Images/{type}.
+	if it.PrimaryImageTag != "" {
+		dto.ImageTags = map[string]string{"Primary": it.PrimaryImageTag}
+	}
+	if it.BackdropImageTag != "" {
+		dto.BackdropImageTags = []string{it.BackdropImageTag}
+	}
 	return dto
 }
 

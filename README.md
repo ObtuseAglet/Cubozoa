@@ -24,11 +24,11 @@ rather than an afterthought.
 
 ## Status
 
-Early development. **Milestones 1 and 2 are complete:** an unmodified Jellyfin
+Early development. **Milestones 1–3 are complete:** an unmodified Jellyfin
 client can discover Cubozoa, log in, and **browse libraries** that Cubozoa scans
-from disk. Point it at a folder of movies and the items show up in the client,
-with titles and years parsed from filenames. See [the roadmap](#roadmap) for
-what is next.
+from disk — complete with **poster and backdrop artwork** discovered next to the
+media files. Point it at a folder of movies and the items show up in the client
+with titles, years, and images. See [the roadmap](#roadmap) for what is next.
 
 Playback is not implemented yet (that is M4), so items browse but do not yet
 stream. The compatibility and security model are proven end-to-end with tests.
@@ -118,8 +118,12 @@ Highlights enforced in code today:
       and `Items`/`Views` endpoints so clients can browse a library. Libraries
       auto-register from `CUBOZOA_MEDIA_DIR`; titles/years are parsed from
       filenames. *(done)*
-- [ ] **M3 — Images & metadata.** Artwork serving and external metadata
-      providers.
+- [x] **M3 — Local artwork.** Posters and backdrops are discovered next to
+      media (name-matched, plus `poster`/`fanart`/`folder` for single-video
+      folders) and served via `/Items/{id}/Images/{type}` with ETag/conditional
+      requests. *(done)*
+- [ ] **M3b — External metadata.** Optional TMDb/TVDb providers to enrich
+      items and fetch artwork when none is present on disk.
 - [ ] **M4 — Playback.** Direct play, then HLS transcoding via ffmpeg.
 - [ ] **M5 — Multi-user & sharing.** User management UI, per-library access,
       the Plex-grade onboarding experience.

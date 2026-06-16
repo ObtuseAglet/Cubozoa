@@ -132,6 +132,56 @@ func (s *Service) Item(id string) (*store.MediaItem, error) {
 	return s.store.GetItem(id)
 }
 
+// ErrNoImage indicates the requested image does not exist for an item.
+var ErrNoImage = errors.New("media: no such image")
+
+// Image describes a resolvable artwork file on disk.
+type Image struct {
+	Path        string
+	ContentType string
+	Tag         string
+}
+
+// ItemImage resolves an item's artwork of the given type ("Primary" or
+// "Backdrop") to a file on disk. As defense in depth it verifies the stored
+// path still lives within the owning library's root, so even a tampered
+// datastore cannot turn an image request into an arbitrary-file read.
+func (s *Service) ItemImage(itemID, imageType string) (Image, error) {
+	it, err := s.store.GetItem(itemID)
+	if err != nil {
+		return Image{}, err
+	}
+
+	var path, tag string
+	switch strings.ToLower(imageType) {
+	case "primary":
+		path, tag = it.PrimaryImagePath, it.PrimaryImageTag
+	case "backdrop":
+		path, tag = it.BackdropImagePath, it.BackdropImageTag
+	default:
+		return Image{}, ErrNoImage
+	}
+	if path == "" {
+		return Image{}, ErrNoImage
+	}
+
+	if lib, err := s.store.GetLibrary(it.LibraryID); err == nil && !withinRoot(lib.Path, path) {
+		s.log.Warn("rejecting image outside library root", "item", itemID, "path", path)
+		return Image{}, ErrNoImage
+	}
+	return Image{Path: path, ContentType: imageContentType(path), Tag: tag}, nil
+}
+
+// withinRoot reports whether p is the same as, or nested under, root. Both are
+// expected to be absolute, cleaned paths.
+func withinRoot(root, p string) bool {
+	rel, err := filepath.Rel(root, p)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 // BrowseQuery describes a browse request. Zero values are sensible defaults.
 type BrowseQuery struct {
 	ParentID         string   // a library ID (or item folder ID)

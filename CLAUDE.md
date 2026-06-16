@@ -53,12 +53,15 @@ cycles or let handlers reach past `auth` into crypto details.
 
 ## Roadmap context
 
-M1 (client handshake + login) and M2 (libraries + browse) are done. Libraries
+M1 (login), M2 (libraries + browse), and M3 (local artwork) are done. Libraries
 auto-register from `CUBOZOA_MEDIA_DIR`; `internal/media` scans them into items
-and serves `Items`/`Views`/`Latest`. Item DTOs deliberately omit the filesystem
-`Path` — never leak it to clients.
+and serves `Items`/`Views`/`Latest`. Posters/backdrops found next to media are
+served from `/Items/{id}/Images/{type}` (see `media/images.go`). Item DTOs
+deliberately omit the filesystem `Path` — never leak it to clients, and image
+requests carry only an item ID + type, resolved server-side to a vetted file
+inside the library root (never a client-supplied path).
 
-Next is M3 (images + external metadata), then M4 (playback: direct play, then
-HLS transcoding via ffmpeg). When adding playback, `MediaItem.Path` is the
-on-disk source; serve it only to authenticated users and never expose the raw
-path in a DTO.
+Next is M3b (optional external metadata: TMDb/TVDb), then M4 (playback: direct
+play, then HLS transcoding via ffmpeg). When adding playback, `MediaItem.Path`
+is the on-disk source; serve it only to authenticated users and never expose the
+raw path in a DTO.

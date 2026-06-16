@@ -23,6 +23,7 @@ import (
 func Scan(lib *store.Library) ([]*store.MediaItem, error) {
 	root := lib.Path
 	var items []*store.MediaItem
+	lister := newDirLister()
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -51,7 +52,7 @@ func Scan(lib *store.Library) ([]*store.MediaItem, error) {
 		}
 
 		title, year := parseName(d.Name())
-		items = append(items, &store.MediaItem{
+		item := &store.MediaItem{
 			ID:             itemID(path),
 			LibraryID:      lib.ID,
 			ParentID:       lib.ID,
@@ -64,7 +65,16 @@ func Scan(lib *store.Library) ([]*store.MediaItem, error) {
 			ProductionYear: year,
 			SizeBytes:      info.Size(),
 			DateCreated:    info.ModTime().UTC(),
-		})
+		}
+
+		if primary, backdrop := findArtwork(lister, path); primary != "" || backdrop != "" {
+			item.PrimaryImagePath = primary
+			item.PrimaryImageTag = imageTag(primary)
+			item.BackdropImagePath = backdrop
+			item.BackdropImageTag = imageTag(backdrop)
+		}
+
+		items = append(items, item)
 		return nil
 	})
 	if err != nil {

@@ -30,4 +30,12 @@ type MediaItem struct {
 	ProductionYear int       `json:"production_year,omitempty"`
 	SizeBytes      int64     `json:"size_bytes"`
 	DateCreated    time.Time `json:"date_created"`
+
+	// Local artwork discovered next to the media file. Paths are internal and
+	// never sent to clients; the tags are content fingerprints clients use for
+	// cache-busting on the image endpoints.
+	PrimaryImagePath  string `json:"primary_image_path,omitempty"`
+	PrimaryImageTag   string `json:"primary_image_tag,omitempty"`
+	BackdropImagePath string `json:"backdrop_image_path,omitempty"`
+	BackdropImageTag  string `json:"backdrop_image_tag,omitempty"`
 }
