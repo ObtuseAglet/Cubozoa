@@ -53,6 +53,13 @@ type Config struct {
 	// found, those features are simply disabled (direct play still works).
 	FFmpegPath  string
 	FFprobePath string
+
+	// TMDbAPIKey enables external metadata enrichment (overviews, ratings,
+	// genres, artwork) from themoviedb.org. Empty disables it. TMDbBaseURL and
+	// TMDbImageBase exist mainly to support self-hosted proxies and tests.
+	TMDbAPIKey    string
+	TMDbBaseURL   string
+	TMDbImageBase string
 }
 
 // Load resolves configuration from the environment, applying defaults.
@@ -68,6 +75,9 @@ func Load() (*Config, error) {
 		TrustedProxies: envBool("CUBOZOA_TRUST_PROXY_HEADERS", false),
 		FFmpegPath:     env("CUBOZOA_FFMPEG_PATH", ""),
 		FFprobePath:    env("CUBOZOA_FFPROBE_PATH", ""),
+		TMDbAPIKey:     env("CUBOZOA_TMDB_API_KEY", ""),
+		TMDbBaseURL:    env("CUBOZOA_TMDB_BASE_URL", ""),
+		TMDbImageBase:  env("CUBOZOA_TMDB_IMAGE_BASE", ""),
 	}
 
 	if c.AdminUsername == "" {

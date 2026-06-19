@@ -17,6 +17,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/config"
 	"github.com/obtuseaglet/cubozoa/internal/media"
+	"github.com/obtuseaglet/cubozoa/internal/metadata"
 	"github.com/obtuseaglet/cubozoa/internal/server"
 	"github.com/obtuseaglet/cubozoa/internal/store"
 	"github.com/obtuseaglet/cubozoa/internal/transcode"
@@ -75,6 +76,10 @@ func run(log *slog.Logger) error {
 		log.Info("ffprobe available; media will be probed during scans")
 	} else {
 		log.Info("ffprobe not found; scans will record titles/years only")
+	}
+	if tmdb, ok := newTMDb(cfg); ok {
+		mediaSvc.SetEnricher(tmdb, filepath.Join(cfg.DataDir, "metadata-images"))
+		log.Info("TMDb metadata enrichment enabled")
 	}
 
 	// Libraries: register any present under the configured media directory,
@@ -140,6 +145,19 @@ func run(log *slog.Logger) error {
 	}
 	log.Info("stopped cleanly")
 	return nil
+}
+
+// newTMDb builds a TMDb metadata provider from configuration, applying any
+// base-URL overrides. It returns ok=false when no API key is configured.
+func newTMDb(cfg *config.Config) (*metadata.TMDb, bool) {
+	var opts []metadata.TMDbOption
+	if cfg.TMDbBaseURL != "" {
+		opts = append(opts, metadata.WithBaseURL(cfg.TMDbBaseURL))
+	}
+	if cfg.TMDbImageBase != "" {
+		opts = append(opts, metadata.WithImageBase(cfg.TMDbImageBase))
+	}
+	return metadata.NewTMDb(cfg.TMDbAPIKey, opts...)
 }
 
 // announceAdmin prints the seeded administrator credentials prominently. A

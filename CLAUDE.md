@@ -28,6 +28,7 @@ internal/auth      seeding, credential verification, session lifecycle
 internal/media     library scanner + browse service (filesystem -> items)
 internal/userdata  per-user resume position, watched/favorite state
 internal/transcode optional ffprobe (metadata) + ffmpeg (on-demand HLS) wrappers
+internal/metadata  optional external metadata provider (TMDb)
 internal/jellyfin  wire DTOs + auth-header parsing (the compatibility contract)
 internal/server    routing, middleware, handlers
 ```
@@ -85,5 +86,13 @@ NN` in `media/naming.go`); browse is parent-based (`ListItemsByParent`), and
 `/Shows/{id}/Seasons`, `/Shows/{id}/Episodes`, and `/Shows/NextUp` back the
 client's series pages. Movies/other libraries stay flat.
 
-Open next: M3b (optional external metadata: TMDb/TVDb), subtitles, and
-adaptive/seek-aware transcoding.
+Subtitles (external sidecars discovered during scan, advertised as external
+MediaStreams, delivered via `/Videos/{id}/Subtitles/{index}/{file}` with
+on-the-fly SubRip→WebVTT conversion) and M3b (optional TMDb enrichment:
+overview/rating/genres + downloaded artwork cached under
+`CUBOZOA_DATA_DIR/metadata-images`, which `media.ItemImage` is allowed to serve
+in addition to the library root) are done. The metadata provider is opt-in via
+`CUBOZOA_TMDB_API_KEY` and gracefully disabled otherwise.
+
+Open next: seek-aware/adaptive transcoding, embedded-subtitle extraction, and
+edge hardening (HTTPS guidance, account lockout, audit logging).

@@ -23,11 +23,17 @@ type BaseItemDto struct {
 
 	// TV hierarchy fields. IndexNumber is the episode number (or season number
 	// on a Season); ParentIndexNumber is the season number on an Episode.
-	SeriesID          string            `json:"SeriesId,omitempty"`
-	SeriesName        string            `json:"SeriesName,omitempty"`
-	SeasonID          string            `json:"SeasonId,omitempty"`
-	IndexNumber       int               `json:"IndexNumber,omitempty"`
-	ParentIndexNumber int               `json:"ParentIndexNumber,omitempty"`
+	SeriesID          string `json:"SeriesId,omitempty"`
+	SeriesName        string `json:"SeriesName,omitempty"`
+	SeasonID          string `json:"SeasonId,omitempty"`
+	IndexNumber       int    `json:"IndexNumber,omitempty"`
+	ParentIndexNumber int    `json:"ParentIndexNumber,omitempty"`
+
+	// External metadata.
+	Overview        string   `json:"Overview,omitempty"`
+	CommunityRating float64  `json:"CommunityRating,omitempty"`
+	Genres          []string `json:"Genres,omitempty"`
+
 	ImageTags         map[string]string `json:"ImageTags,omitempty"`
 	BackdropImageTags []string          `json:"BackdropImageTags,omitempty"`
 	UserData          *UserItemDataDto  `json:"UserData,omitempty"`

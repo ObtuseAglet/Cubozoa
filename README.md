@@ -32,8 +32,10 @@ durations and codecs**), **play media** — via direct play with full seek suppo
 (HTTP Range) or **on-demand HLS transcoding** (ffmpeg) for formats a client
 can't play natively — and **resume where it left off** (per-user position,
 watched status and favorites persist across restarts). **TV libraries** are
-organized into Series → Season → Episode with a working "Next Up". See
-[the roadmap](#roadmap) for what is next.
+organized into Series → Season → Episode with a working "Next Up". **External
+subtitles** are delivered (with SubRip→WebVTT conversion), and an optional
+**TMDb provider** enriches items with overviews, ratings, genres and artwork.
+See [the roadmap](#roadmap) for what is next.
 
 ffmpeg and ffprobe are **optional**: when present, Cubozoa probes media for
 metadata and offers HLS transcoding; when absent, direct play still works and
@@ -81,6 +83,7 @@ All configuration is via environment variables; every one has a safe default.
 | `CUBOZOA_TRUST_PROXY_HEADERS` | `false` | Honor `X-Forwarded-*` (only enable behind a trusted reverse proxy). |
 | `CUBOZOA_FFMPEG_PATH` | _(PATH lookup)_ | ffmpeg binary for HLS transcoding; transcoding is disabled if not found. |
 | `CUBOZOA_FFPROBE_PATH` | _(PATH lookup)_ | ffprobe binary for media metadata; scans record titles/years only if not found. |
+| `CUBOZOA_TMDB_API_KEY` | _(empty)_ | Enables TMDb metadata enrichment (overviews, ratings, genres, artwork). Disabled if unset. |
 
 ## Architecture
 
@@ -98,6 +101,7 @@ internal/
   media               # library scanner, browse service, artwork & stream resolution
   userdata            # per-user resume position, watched/favorite state
   transcode           # optional ffprobe (metadata) + ffmpeg (HLS) wrappers
+  metadata            # optional external metadata provider (TMDb)
   jellyfin            # Jellyfin wire DTOs + auth-header protocol parsing
   server              # routing, middleware, and the Jellyfin-compatible handlers
 ```
@@ -135,8 +139,11 @@ Highlights enforced in code today:
       media (name-matched, plus `poster`/`fanart`/`folder` for single-video
       folders) and served via `/Items/{id}/Images/{type}` with ETag/conditional
       requests. *(done)*
-- [ ] **M3b — External metadata.** Optional TMDb/TVDb providers to enrich
-      items and fetch artwork when none is present on disk.
+- [x] **M3b — External metadata.** Optional TMDb provider enriches movies and
+      series with overviews, ratings, genres and artwork (downloaded and cached)
+      when a key is configured. *(done)*
+- [x] **Subtitles.** External sidecar subtitles are discovered and delivered,
+      with on-the-fly SubRip→WebVTT conversion. *(done)*
 - [x] **M4 — Direct-play playback.** `PlaybackInfo` negotiation and raw media
       streaming via `/Videos/{id}/stream` with HTTP Range (seek) support, plus
       playback progress reporting. *(done)*

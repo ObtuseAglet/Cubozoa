@@ -3,7 +3,9 @@ package media
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
@@ -11,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/obtuseaglet/cubozoa/internal/metadata"
 	"github.com/obtuseaglet/cubozoa/internal/store"
 	"github.com/obtuseaglet/cubozoa/internal/transcode"
 )
@@ -22,18 +25,37 @@ type Service struct {
 	log    *slog.Logger
 	prober *transcode.Prober // optional; nil disables ffprobe metadata
 
+	enricher   metadata.Provider // optional; nil disables external metadata
+	metaCache  string            // dir for downloaded artwork; "" disables it
+	httpClient *http.Client
+
 	scanMu sync.Mutex // serializes scans so two refreshes don't race
 }
 
 // NewService constructs a media Service.
 func NewService(st store.Store, log *slog.Logger) *Service {
-	return &Service{store: st, log: log}
+	return &Service{
+		store:      st,
+		log:        log,
+		httpClient: &http.Client{Timeout: 20 * time.Second},
+	}
 }
 
 // SetProber enables ffprobe metadata extraction during scans. A nil prober
 // leaves scanning metadata-free (titles/years only).
 func (s *Service) SetProber(p *transcode.Prober) {
 	s.prober = p
+}
+
+// SetEnricher enables external metadata lookups during scans, caching any
+// downloaded artwork under cacheDir. Items that already have local artwork keep
+// it; only missing fields and images are filled in.
+func (s *Service) SetEnricher(p metadata.Provider, cacheDir string) {
+	s.enricher = p
+	s.metaCache = cacheDir
+	if cacheDir != "" {
+		_ = os.MkdirAll(cacheDir, 0o700)
+	}
 }
 
 // SyncLibrariesFromMediaDir registers a library for each immediate subdirectory
@@ -118,6 +140,9 @@ func (s *Service) ScanLibrary(id string) error {
 	if s.prober != nil {
 		s.probeItems(items)
 	}
+	if s.enricher != nil {
+		s.enrichItems(items)
+	}
 	if err := s.store.ReplaceLibraryItems(id, items); err != nil {
 		return err
 	}
@@ -125,9 +150,114 @@ func (s *Service) ScanLibrary(id string) error {
 		"name", lib.Name,
 		"items", len(items),
 		"probed", s.prober != nil,
+		"enriched", s.enricher != nil,
 		"duration_ms", time.Since(start).Milliseconds(),
 	)
 	return nil
+}
+
+// enrichItems fills overview/rating/genre/artwork from the external provider for
+// Movie and Series items, with bounded concurrency. Failures (no match, network
+// error) are non-fatal: the item keeps its filename-derived data.
+func (s *Service) enrichItems(items []*store.MediaItem) {
+	const workers = 3
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for _, it := range items {
+		if it.Type != "Movie" && it.Type != "Series" {
+			continue
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(it *store.MediaItem) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			s.enrichOne(it)
+		}(it)
+	}
+	wg.Wait()
+}
+
+func (s *Service) enrichOne(it *store.MediaItem) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var (
+		res *metadata.Result
+		err error
+	)
+	if it.Type == "Series" {
+		res, err = s.enricher.Series(ctx, it.Name, it.ProductionYear)
+	} else {
+		res, err = s.enricher.Movie(ctx, it.Name, it.ProductionYear)
+	}
+	if err != nil {
+		if !errors.Is(err, metadata.ErrNotFound) {
+			s.log.Warn("metadata lookup failed", "title", it.Name, "err", err)
+		}
+		return
+	}
+
+	if res.Title != "" {
+		it.Name = res.Title
+	}
+	it.Overview = res.Overview
+	it.CommunityRating = res.Rating
+	it.Genres = res.Genres
+	if it.ProductionYear == 0 {
+		it.ProductionYear = res.Year
+	}
+
+	// Only fetch remote artwork when none was found locally.
+	if it.PrimaryImagePath == "" && res.PrimaryImageURL != "" {
+		if p := s.cacheImage(ctx, it.ID+"-primary", res.PrimaryImageURL); p != "" {
+			it.PrimaryImagePath = p
+			it.PrimaryImageTag = imageTag(p)
+		}
+	}
+	if it.BackdropImagePath == "" && res.BackdropImageURL != "" {
+		if p := s.cacheImage(ctx, it.ID+"-backdrop", res.BackdropImageURL); p != "" {
+			it.BackdropImagePath = p
+			it.BackdropImageTag = imageTag(p)
+		}
+	}
+}
+
+// cacheImage downloads a remote image into the metadata cache and returns its
+// local path, or "" on any failure. The cache directory is created under the
+// data dir, which the image handler is permitted to serve from.
+func (s *Service) cacheImage(ctx context.Context, name, remoteURL string) string {
+	if s.metaCache == "" {
+		return ""
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, remoteURL, nil)
+	if err != nil {
+		return ""
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+
+	ext := ".jpg"
+	if e := filepath.Ext(remoteURL); e != "" && len(e) <= 5 {
+		ext = e
+	}
+	dest := filepath.Join(s.metaCache, name+ext)
+	f, err := os.Create(dest)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	// Cap the download size to avoid a hostile provider filling the disk.
+	if _, err := io.Copy(f, io.LimitReader(resp.Body, 16<<20)); err != nil {
+		return ""
+	}
+	return dest
 }
 
 // probeItems fills duration/codec/stream metadata for each item using ffprobe,
@@ -293,11 +423,26 @@ func (s *Service) ItemImage(itemID, imageType string) (Image, error) {
 		return Image{}, ErrNoImage
 	}
 
-	if lib, err := s.store.GetLibrary(it.LibraryID); err == nil && !withinRoot(lib.Path, path) {
-		s.log.Warn("rejecting image outside library root", "item", itemID, "path", path)
+	if !s.imagePathAllowed(it.LibraryID, path) {
+		s.log.Warn("rejecting image outside permitted roots", "item", itemID, "path", path)
 		return Image{}, ErrNoImage
 	}
 	return Image{Path: path, ContentType: imageContentType(path), Tag: tag}, nil
+}
+
+// imagePathAllowed reports whether an image path may be served: it must live
+// inside the owning library's root or the metadata artwork cache. This keeps
+// image serving from ever reading an arbitrary file while still allowing
+// downloaded posters (which live under the data dir, not the library).
+func (s *Service) imagePathAllowed(libraryID, path string) bool {
+	if s.metaCache != "" && withinRoot(s.metaCache, path) {
+		return true
+	}
+	lib, err := s.store.GetLibrary(libraryID)
+	if err != nil {
+		return false
+	}
+	return withinRoot(lib.Path, path)
 }
 
 // withinRoot reports whether p is the same as, or nested under, root. Both are

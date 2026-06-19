@@ -44,6 +44,9 @@ func (s *Server) itemToDto(it *store.MediaItem, ud *store.UserItemData) jellyfin
 		SeasonID:          it.SeasonID,
 		IndexNumber:       it.IndexNumber,
 		ParentIndexNumber: it.ParentIndexNumber,
+		Overview:          it.Overview,
+		CommunityRating:   it.CommunityRating,
+		Genres:            it.Genres,
 		LocationType:      "FileSystem",
 		UserData:          userDataDto(it.ID, ud),
 	}

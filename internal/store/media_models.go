@@ -55,6 +55,11 @@ type MediaItem struct {
 	// internal; clients fetch them through the subtitle delivery endpoint.
 	Subtitles []SubtitleTrack `json:"subtitles,omitempty"`
 
+	// External metadata (populated by an optional provider such as TMDb).
+	Overview        string   `json:"overview,omitempty"`
+	CommunityRating float64  `json:"community_rating,omitempty"`
+	Genres          []string `json:"genres,omitempty"`
+
 	// Local artwork discovered next to the media file. Paths are internal and
 	// never sent to clients; the tags are content fingerprints clients use for
 	// cache-busting on the image endpoints.

@@ -60,6 +60,7 @@ should not merge.
 | Transcode input resolved server-side; HLS segment names strictly validated | ✅ |
 | ffmpeg/ffprobe run with explicit argv (never a shell); sessions bounded & reaped | ✅ |
 | Subtitle delivery resolves by item ID + ordinal to a vetted file in the library root | ✅ |
+| Downloaded metadata artwork is size-capped and served only from the vetted cache dir | ✅ |
 | TLS termination / HTTPS guidance | ⏳ planned |
 | Account lockout / 2FA | ⏳ planned |
 | Audit logging | ⏳ planned |
