@@ -39,3 +39,16 @@ type MediaItem struct {
 	BackdropImagePath string `json:"backdrop_image_path,omitempty"`
 	BackdropImageTag  string `json:"backdrop_image_tag,omitempty"`
 }
+
+// UserItemData is per-user, per-item playback state: resume position, play
+// count, watched and favorite flags. It is stored separately from the shared
+// MediaItem catalog so a re-scan never disturbs a user's progress.
+type UserItemData struct {
+	UserID                string    `json:"user_id"`
+	ItemID                string    `json:"item_id"`
+	PlaybackPositionTicks int64     `json:"playback_position_ticks"`
+	PlayCount             int       `json:"play_count"`
+	Played                bool      `json:"played"`
+	IsFavorite            bool      `json:"is_favorite"`
+	LastPlayedAt          time.Time `json:"last_played_at"`
+}

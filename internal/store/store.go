@@ -50,6 +50,11 @@ type Store interface {
 	// how a re-scan publishes its results without leaving partial state.
 	ReplaceLibraryItems(libraryID string, items []*MediaItem) error
 
+	// Per-user item data (resume position, watched/favorite state)
+	GetUserItemData(userID, itemID string) (*UserItemData, error)
+	UpsertUserItemData(d *UserItemData) error
+	ListUserItemData(userID string) ([]*UserItemData, error)
+
 	// Close flushes and releases any resources held by the store.
 	Close() error
 }

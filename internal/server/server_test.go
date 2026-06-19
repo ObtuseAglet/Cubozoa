@@ -14,6 +14,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/jellyfin"
 	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/store"
+	"github.com/obtuseaglet/cubozoa/internal/userdata"
 )
 
 // newTestServer builds a fully wired server backed by a temp-dir store with a
@@ -35,7 +36,7 @@ func newTestServer(t *testing.T) (*httptest.Server, string) {
 
 	cfg := &config.Config{ServerName: "Test", BindAddress: ":8096"}
 	mediaSvc := media.NewService(st, log)
-	srv := New(cfg, st, authSvc, mediaSvc, log)
+	srv := New(cfg, st, authSvc, mediaSvc, userdata.New(st), log)
 	ts := httptest.NewServer(srv.Handler())
 	t.Cleanup(ts.Close)
 	return ts, password

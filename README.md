@@ -25,10 +25,12 @@ rather than an afterthought.
 ## Status
 
 Early development, but already a working media server for direct-play content.
-**Milestones 1–4 (direct play) are complete:** an unmodified Jellyfin client can
-discover Cubozoa, log in, **browse libraries** scanned from disk (with **poster
-and backdrop artwork**), and **play media** via direct play with full seek
-support (HTTP Range). See [the roadmap](#roadmap) for what is next.
+**Milestones 1–4c are complete:** an unmodified Jellyfin client can discover
+Cubozoa, log in, **browse libraries** scanned from disk (with **poster and
+backdrop artwork**), **play media** via direct play with full seek support (HTTP
+Range), and **resume where it left off** — per-user playback position, watched
+status and favorites persist across restarts. See [the roadmap](#roadmap) for
+what is next.
 
 Transcoding is not implemented yet, so playback works for media a client can
 play natively; format conversion via ffmpeg is the next milestone. The
@@ -128,10 +130,11 @@ Highlights enforced in code today:
 - [x] **M4 — Direct-play playback.** `PlaybackInfo` negotiation and raw media
       streaming via `/Videos/{id}/stream` with HTTP Range (seek) support, plus
       playback progress reporting. *(done)*
+- [x] **M4c — Resume & watched state.** Per-user resume position, played status
+      and favorites persist across restarts and surface in item DTOs and a
+      "Continue Watching" (`/Users/{id}/Items/Resume`) row. *(done)*
 - [ ] **M4b — Transcoding.** HLS transcoding via ffmpeg for formats a client
       cannot play directly, plus ffprobe-sourced stream metadata.
-- [ ] **M4c — Resume & watched state.** Persist per-user playback position and
-      played status so clients can resume.
 - [ ] **M5 — Multi-user & sharing.** User management UI, per-library access,
       the Plex-grade onboarding experience.
 

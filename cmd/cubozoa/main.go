@@ -18,6 +18,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/server"
 	"github.com/obtuseaglet/cubozoa/internal/store"
+	"github.com/obtuseaglet/cubozoa/internal/userdata"
 )
 
 // version is Cubozoa's own product version, distinct from the Jellyfin API
@@ -78,7 +79,8 @@ func run(log *slog.Logger) error {
 		}
 	}()
 
-	srv := server.New(cfg, st, authSvc, mediaSvc, log)
+	userDataSvc := userdata.New(st)
+	srv := server.New(cfg, st, authSvc, mediaSvc, userDataSvc, log)
 
 	httpServer := &http.Server{
 		Addr:    cfg.BindAddress,

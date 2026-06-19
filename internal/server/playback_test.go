@@ -16,6 +16,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/jellyfin"
 	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/store"
+	"github.com/obtuseaglet/cubozoa/internal/userdata"
 )
 
 // newPlaybackServer builds a server whose Movies library holds one movie file
@@ -52,7 +53,7 @@ func newPlaybackServer(t *testing.T, content []byte) (*httptest.Server, string, 
 		t.Fatal(err)
 	}
 
-	ts := httptest.NewServer(New(&config.Config{ServerName: "Test"}, st, authSvc, mediaSvc, log).Handler())
+	ts := httptest.NewServer(New(&config.Config{ServerName: "Test"}, st, authSvc, mediaSvc, userdata.New(st), log).Handler())
 	t.Cleanup(ts.Close)
 
 	token, _ := login(t, ts.URL, "admin", password)

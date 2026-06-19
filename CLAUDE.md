@@ -26,6 +26,7 @@ internal/security  argon2id, secure tokens, constant-time compare  (crypto lives
 internal/store     Store interface + JSON impl; swap for SQL later without touching callers
 internal/auth      seeding, credential verification, session lifecycle
 internal/media     library scanner + browse service (filesystem -> items)
+internal/userdata  per-user resume position, watched/favorite state
 internal/jellyfin  wire DTOs + auth-header parsing (the compatibility contract)
 internal/server    routing, middleware, handlers
 ```
@@ -53,8 +54,12 @@ cycles or let handlers reach past `auth` into crypto details.
 
 ## Roadmap context
 
-M1 (login), M2 (libraries + browse), M3 (local artwork), and M4 (direct-play
-playback) are done. Libraries auto-register from `CUBOZOA_MEDIA_DIR`;
+M1 (login), M2 (libraries + browse), M3 (local artwork), M4 (direct-play
+playback), and M4c (resume/watched/favorite state via `internal/userdata`,
+persisted per-user and surfaced in item DTOs + `/Users/{id}/Items/Resume`) are
+done. Per-user endpoints enforce that a caller only acts on their own data
+unless they are an admin (`effectiveUserID`). Libraries auto-register from
+`CUBOZOA_MEDIA_DIR`;
 `internal/media` scans them into items and serves `Items`/`Views`/`Latest`.
 Posters/backdrops found next to media are served from `/Items/{id}/Images/{type}`
 (see `media/images.go`). Playback: `/Items/{id}/PlaybackInfo` advertises direct
@@ -64,6 +69,5 @@ and re-check it lives inside the library root (`withinRoot`) — clients never
 supply a path. Item DTOs and MediaSources deliberately omit the filesystem
 `Path`.
 
-Next is M4b (HLS transcoding via ffmpeg + ffprobe stream metadata) and M4c
-(resume/watched state — needs a per-user item-data store). M3b (optional
-external metadata: TMDb/TVDb) is also open.
+Next is M4b (HLS transcoding via ffmpeg + ffprobe stream metadata). M3b
+(optional external metadata: TMDb/TVDb) is also open.

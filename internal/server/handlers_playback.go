@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -105,11 +106,18 @@ func (s *Server) handleVideoStream(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /Sessions/Playing, /Sessions/Playing/Progress, /Sessions/Playing/Stopped
-// — playback lifecycle reports. Accepted and acknowledged; resume/watched-state
-// persistence is a later milestone, so the body is drained and discarded.
+// — playback lifecycle reports. The reported position is persisted as the
+// user's resume point; a malformed body is tolerated (still 204) so a client's
+// telemetry quirk never breaks playback.
 func (s *Server) handlePlaybackReport(w http.ResponseWriter, r *http.Request) {
+	var info jellyfin.PlaybackProgressInfo
 	if r.Body != nil {
-		_, _ = io.Copy(io.Discard, http.MaxBytesReader(w, r.Body, maxPlaybackBody))
+		_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, maxPlaybackBody)).Decode(&info)
+	}
+	if u := userFrom(r); u != nil && info.ItemID != "" {
+		if err := s.userData.ReportPosition(u.ID, info.ItemID, info.PositionTicks); err != nil {
+			s.log.Warn("recording playback position", "err", err)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -56,6 +56,7 @@ should not merge.
 | Image requests resolve server-side to vetted files within the library root | ✅ |
 | Stream requests resolve by item ID to a vetted file in the library root (no client path) | ✅ |
 | Media streaming requires authentication | ✅ |
+| Per-user data endpoints enforce self-or-admin authorization | ✅ |
 | TLS termination / HTTPS guidance | ⏳ planned |
 | Account lockout / 2FA | ⏳ planned |
 | Audit logging | ⏳ planned |

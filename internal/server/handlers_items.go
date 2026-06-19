@@ -37,8 +37,9 @@ func (s *Server) handleItems(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError)
 		return
 	}
+	udMap := s.userData.Map(userFrom(r).ID)
 	s.writeJSON(w, http.StatusOK, jellyfin.QueryResult[jellyfin.BaseItemDto]{
-		Items:            s.itemsToDtos(items),
+		Items:            s.itemsToDtos(items, udMap),
 		TotalRecordCount: total,
 		StartIndex:       q.StartIndex,
 	})
@@ -56,7 +57,8 @@ func (s *Server) handleItemDetail(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, s.itemToDto(it))
+	ud := s.userData.Get(userFrom(r).ID, it.ID)
+	s.writeJSON(w, http.StatusOK, s.itemToDto(it, ud))
 }
 
 // GET /Items/Latest and GET /Users/{userId}/Items/Latest — most recently added
@@ -76,7 +78,7 @@ func (s *Server) handleItemsLatest(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, s.itemsToDtos(items))
+	s.writeJSON(w, http.StatusOK, s.itemsToDtos(items, s.userData.Map(userFrom(r).ID)))
 }
 
 // GET /Shows/NextUp — empty until episode tracking exists, but returning a

@@ -16,6 +16,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/jellyfin"
 	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/store"
+	"github.com/obtuseaglet/cubozoa/internal/userdata"
 )
 
 // newTestServerWithLibrary wires a server backed by a scanned movie library and
@@ -57,7 +58,7 @@ func newTestServerWithLibrary(t *testing.T, files []string) (*httptest.Server, s
 	libs, _ := mediaSvc.Libraries()
 
 	cfg := &config.Config{ServerName: "Test"}
-	ts := httptest.NewServer(New(cfg, st, authSvc, mediaSvc, log).Handler())
+	ts := httptest.NewServer(New(cfg, st, authSvc, mediaSvc, userdata.New(st), log).Handler())
 	t.Cleanup(ts.Close)
 
 	token, _ := login(t, ts.URL, "admin", password)

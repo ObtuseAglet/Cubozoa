@@ -22,18 +22,25 @@ type jsonStore struct {
 	serverID  string
 	users     map[string]*User // keyed by user ID
 	sessions  map[string]*Session
-	libraries map[string]*Library   // keyed by library ID
-	items     map[string]*MediaItem // keyed by item ID
+	libraries map[string]*Library      // keyed by library ID
+	items     map[string]*MediaItem    // keyed by item ID
+	userData  map[string]*UserItemData // keyed by userID + "\x00" + itemID
 }
 
 // persisted is the on-disk schema. Versioned so future migrations are possible.
 type persisted struct {
-	Version   int                   `json:"version"`
-	ServerID  string                `json:"server_id"`
-	Users     map[string]*User      `json:"users"`
-	Sessions  map[string]*Session   `json:"sessions"`
-	Libraries map[string]*Library   `json:"libraries"`
-	Items     map[string]*MediaItem `json:"items"`
+	Version   int                      `json:"version"`
+	ServerID  string                   `json:"server_id"`
+	Users     map[string]*User         `json:"users"`
+	Sessions  map[string]*Session      `json:"sessions"`
+	Libraries map[string]*Library      `json:"libraries"`
+	Items     map[string]*MediaItem    `json:"items"`
+	UserData  map[string]*UserItemData `json:"user_data"`
+}
+
+// userDataKey composes the map key for a user/item pair.
+func userDataKey(userID, itemID string) string {
+	return userID + "\x00" + itemID
 }
 
 const schemaVersion = 1
@@ -50,6 +57,7 @@ func OpenJSON(dataDir string) (Store, error) {
 		sessions:  make(map[string]*Session),
 		libraries: make(map[string]*Library),
 		items:     make(map[string]*MediaItem),
+		userData:  make(map[string]*UserItemData),
 	}
 
 	if err := s.load(); err != nil {
@@ -97,6 +105,9 @@ func (s *jsonStore) load() error {
 	if p.Items != nil {
 		s.items = p.Items
 	}
+	if p.UserData != nil {
+		s.userData = p.UserData
+	}
 	return nil
 }
 
@@ -110,6 +121,7 @@ func (s *jsonStore) flushLocked() error {
 		Sessions:  s.sessions,
 		Libraries: s.libraries,
 		Items:     s.items,
+		UserData:  s.userData,
 	}
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
@@ -359,6 +371,38 @@ func (s *jsonStore) ReplaceLibraryItems(libraryID string, items []*MediaItem) er
 	lib.ItemCount = len(items)
 	lib.ScannedAt = time.Now().UTC()
 	return s.flushLocked()
+}
+
+func (s *jsonStore) GetUserItemData(userID, itemID string) (*UserItemData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	d, ok := s.userData[userDataKey(userID, itemID)]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	clone := *d
+	return &clone, nil
+}
+
+func (s *jsonStore) UpsertUserItemData(d *UserItemData) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	clone := *d
+	s.userData[userDataKey(d.UserID, d.ItemID)] = &clone
+	return s.flushLocked()
+}
+
+func (s *jsonStore) ListUserItemData(userID string) ([]*UserItemData, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*UserItemData, 0)
+	for _, d := range s.userData {
+		if d.UserID == userID {
+			clone := *d
+			out = append(out, &clone)
+		}
+	}
+	return out, nil
 }
 
 func (s *jsonStore) Close() error {
