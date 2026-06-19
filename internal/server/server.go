@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/obtuseaglet/cubozoa/internal/audit"
 	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/config"
 	"github.com/obtuseaglet/cubozoa/internal/media"
@@ -23,9 +24,19 @@ type Server struct {
 	media      *media.Service
 	userData   *userdata.Service
 	transcoder *transcode.Manager // optional; nil disables transcoding
+	audit      *audit.Logger      // optional; nil discards audit events
 	log        *slog.Logger
 
 	limiter *rateLimiter
+}
+
+// SetAudit attaches an audit logger for security events. Nil is safe (events
+// are discarded).
+func (s *Server) SetAudit(a *audit.Logger) { s.audit = a }
+
+// auditEvent records a security event if an audit logger is configured.
+func (s *Server) auditEvent(event string, attrs ...any) {
+	s.audit.Event(event, attrs...)
 }
 
 // SetTranscoder enables HLS transcoding. A nil manager leaves transcoding off

@@ -94,5 +94,11 @@ overview/rating/genres + downloaded artwork cached under
 in addition to the library root) are done. The metadata provider is opt-in via
 `CUBOZOA_TMDB_API_KEY` and gracefully disabled otherwise.
 
-Open next: seek-aware/adaptive transcoding, embedded-subtitle extraction, and
-edge hardening (HTTPS guidance, account lockout, audit logging).
+Edge hardening is in: direct HTTPS serving (TLS 1.2+) with HSTS over TLS,
+persistent per-account lockout after repeated failures (generic 401, no
+enumeration; policy via `CUBOZOA_LOCKOUT_*`), and structured audit logging
+(`internal/audit`, events emitted from the auth handlers, optional
+`CUBOZOA_AUDIT_LOG_FILE`).
+
+Open next: music libraries (Artist/Album/Track), seek-aware/adaptive
+transcoding, embedded-subtitle extraction, 2FA.

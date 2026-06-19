@@ -4,7 +4,10 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/obtuseaglet/cubozoa/internal/audit"
 	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/config"
 	"github.com/obtuseaglet/cubozoa/internal/media"
@@ -55,7 +59,16 @@ func run(log *slog.Logger) error {
 	}
 	defer st.Close()
 
+	// Audit log: structured security events, optionally to a dedicated file.
+	auditWriter, auditClose, err := openAuditWriter(cfg.AuditLogFile)
+	if err != nil {
+		return err
+	}
+	defer auditClose()
+	auditLog := audit.New(auditWriter)
+
 	authSvc := auth.New(st, log)
+	authSvc.SetLockoutPolicy(cfg.LockoutThreshold, cfg.LockoutDuration)
 
 	// First-run: seed the administrator account. If no password was supplied,
 	// a strong random one is generated and printed exactly once.
@@ -98,6 +111,7 @@ func run(log *slog.Logger) error {
 
 	userDataSvc := userdata.New(st)
 	srv := server.New(cfg, st, authSvc, mediaSvc, userDataSvc, log)
+	srv.SetAudit(auditLog)
 
 	if mgr, ok := transcode.NewManager(cfg.FFmpegPath, filepath.Join(cfg.DataDir, "transcodes"), log); ok {
 		srv.SetTranscoder(mgr)
@@ -119,15 +133,28 @@ func run(log *slog.Logger) error {
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
 
+	tlsEnabled := cfg.TLSCertFile != "" && cfg.TLSKeyFile != ""
+	if tlsEnabled {
+		// Modern TLS floor: refuse anything below 1.2.
+		httpServer.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+
 	// Run the server until a signal asks us to stop, then drain gracefully.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Info("listening", "addr", cfg.BindAddress)
-		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+		log.Info("listening", "addr", cfg.BindAddress, "tls", tlsEnabled)
+		var serveErr error
+		if tlsEnabled {
+			serveErr = httpServer.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile)
+		} else {
+			log.Warn("serving plaintext HTTP; terminate TLS at a proxy or set CUBOZOA_TLS_CERT_FILE/KEY_FILE for HTTPS")
+			serveErr = httpServer.ListenAndServe()
+		}
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			errCh <- serveErr
 		}
 	}()
 
@@ -145,6 +172,20 @@ func run(log *slog.Logger) error {
 	}
 	log.Info("stopped cleanly")
 	return nil
+}
+
+// openAuditWriter returns the destination for audit events. When a path is
+// configured, events are appended to that file (created 0600); otherwise they
+// go to stdout. The returned close function releases a file if one was opened.
+func openAuditWriter(path string) (io.Writer, func(), error) {
+	if path == "" {
+		return os.Stdout, func() {}, nil
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, nil, fmt.Errorf("opening audit log: %w", err)
+	}
+	return f, func() { f.Close() }, nil
 }
 
 // newTMDb builds a TMDb metadata provider from configuration, applying any

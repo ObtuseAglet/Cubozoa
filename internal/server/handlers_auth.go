@@ -2,9 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 
+	"github.com/obtuseaglet/cubozoa/internal/audit"
+	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/jellyfin"
 )
 
@@ -35,19 +38,26 @@ func (s *Server) handleAuthenticateByName(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	ca := clientAuthFrom(r)
+
 	user, err := s.auth.Authenticate(req.Username, req.Pw)
 	if err != nil {
-		if isInvalidCreds(err) {
+		switch {
+		case errors.Is(err, auth.ErrAccountLocked):
+			s.log.Warn("login attempt on locked account", "user", req.Username, "remote", ip)
+			s.auditEvent(audit.AccountLocked, "user", req.Username, "remote", ip, "client", ca.Client)
+		case isInvalidCreds(err):
 			s.log.Warn("failed login", "user", req.Username, "remote", ip)
-			s.writeError(w, http.StatusUnauthorized)
+			s.auditEvent(audit.LoginFailure, "user", req.Username, "remote", ip, "client", ca.Client)
+		default:
+			s.log.Error("authentication error", "err", err, "remote", ip)
+			s.writeError(w, http.StatusInternalServerError)
 			return
 		}
-		s.log.Error("authentication error", "err", err, "remote", ip)
-		s.writeError(w, http.StatusInternalServerError)
+		s.writeError(w, http.StatusUnauthorized)
 		return
 	}
 
-	ca := clientAuthFrom(r)
 	issued, err := s.auth.CreateSession(user.ID, ca.Client, ca.Device, ca.DeviceID, ca.Version, ip)
 	if err != nil {
 		s.log.Error("creating session", "err", err)
@@ -56,6 +66,7 @@ func (s *Server) handleAuthenticateByName(w http.ResponseWriter, r *http.Request
 	}
 
 	s.log.Info("login", "user", user.Name, "client", ca.Client, "device", ca.Device, "remote", ip)
+	s.auditEvent(audit.LoginSuccess, "user", user.Name, "remote", ip, "client", ca.Client, "device", ca.Device)
 
 	s.writeJSON(w, http.StatusOK, jellyfin.AuthenticationResult{
 		User:        s.toUserDto(user),
@@ -80,6 +91,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	ca := clientAuthFrom(r)
 	if err := s.auth.Logout(ca.Token); err != nil {
 		s.log.Warn("logout", "err", err)
+	}
+	if u := userFrom(r); u != nil {
+		s.auditEvent(audit.Logout, "user", u.Name, "remote", clientIP(r, s.cfg.TrustedProxies))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

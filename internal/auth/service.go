@@ -25,15 +25,43 @@ import (
 // intentionally generic to avoid leaking whether an account exists.
 var ErrInvalidCredentials = errors.New("auth: invalid username or password")
 
+// ErrAccountLocked is returned (internally) when an account is temporarily
+// locked after too many failed attempts. Handlers map it to the same generic
+// 401 as bad credentials so it does not reveal that the account exists.
+var ErrAccountLocked = errors.New("auth: account temporarily locked")
+
+// Default brute-force protection policy.
+const (
+	defaultLockoutThreshold = 5
+	defaultLockoutDuration  = 15 * time.Minute
+)
+
 // Service provides authentication operations over a Store.
 type Service struct {
 	store store.Store
 	log   *slog.Logger
+
+	lockoutThreshold int
+	lockoutDuration  time.Duration
 }
 
 // New constructs an auth Service.
 func New(s store.Store, log *slog.Logger) *Service {
-	return &Service{store: s, log: log}
+	return &Service{
+		store:            s,
+		log:              log,
+		lockoutThreshold: defaultLockoutThreshold,
+		lockoutDuration:  defaultLockoutDuration,
+	}
+}
+
+// SetLockoutPolicy overrides the account-lockout threshold and duration. A
+// threshold of 0 disables lockout (per-IP rate limiting still applies).
+func (s *Service) SetLockoutPolicy(threshold int, duration time.Duration) {
+	s.lockoutThreshold = threshold
+	if duration > 0 {
+		s.lockoutDuration = duration
+	}
 }
 
 // SeedAdmin creates the initial administrator account if no users exist. If
@@ -100,10 +128,14 @@ func (s *Service) CreateUser(username, password string, admin bool) error {
 	return nil
 }
 
-// Authenticate verifies credentials and, on success, returns the user. To
-// resist timing-based user enumeration, a verification is always performed —
-// against a dummy hash when the user does not exist — so the response time does
-// not reveal whether the username was valid.
+// Authenticate verifies credentials and, on success, returns the user.
+//
+// Two abuse protections are layered in:
+//   - Timing-based user enumeration is resisted by always performing a
+//     verification (against a dummy hash when the user does not exist).
+//   - Repeated failures against a real account increment a counter and, past
+//     the threshold, lock the account for a cool-off period. A locked account
+//     returns ErrAccountLocked, which callers surface as a generic 401.
 func (s *Service) Authenticate(username, password string) (*store.User, error) {
 	u, err := s.store.GetUserByName(username)
 	if err != nil {
@@ -114,16 +146,48 @@ func (s *Service) Authenticate(username, password string) (*store.User, error) {
 		return nil, err
 	}
 
+	if s.isLocked(u) {
+		return nil, ErrAccountLocked
+	}
+
 	ok, err := security.VerifyPassword(password, u.PasswordHash)
 	if err != nil || !ok {
+		s.recordFailure(u)
+		if s.isLocked(u) {
+			return nil, ErrAccountLocked
+		}
 		return nil, ErrInvalidCredentials
 	}
 
+	// Success: clear any failure state and record the login.
+	u.FailedLoginAttempts = 0
+	u.LockedUntil = time.Time{}
 	u.LastLoginAt = time.Now().UTC()
 	if err := s.store.UpdateUser(u); err != nil {
-		s.log.Warn("failed to update last login", "user", u.ID, "err", err)
+		s.log.Warn("failed to update user on login", "user", u.ID, "err", err)
 	}
 	return u, nil
+}
+
+// isLocked reports whether the account is currently within a lockout window.
+func (s *Service) isLocked(u *store.User) bool {
+	return !u.LockedUntil.IsZero() && time.Now().UTC().Before(u.LockedUntil)
+}
+
+// recordFailure increments the failure counter and locks the account once the
+// threshold is reached, persisting the change.
+func (s *Service) recordFailure(u *store.User) {
+	if s.lockoutThreshold <= 0 {
+		return
+	}
+	u.FailedLoginAttempts++
+	if u.FailedLoginAttempts >= s.lockoutThreshold {
+		u.LockedUntil = time.Now().UTC().Add(s.lockoutDuration)
+		s.log.Warn("account locked after repeated failures", "user", u.Name, "until", u.LockedUntil)
+	}
+	if err := s.store.UpdateUser(u); err != nil {
+		s.log.Warn("failed to record login failure", "user", u.ID, "err", err)
+	}
 }
 
 // IssuedToken bundles a new session with the one-time plaintext access token.

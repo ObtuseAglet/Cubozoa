@@ -84,6 +84,9 @@ All configuration is via environment variables; every one has a safe default.
 | `CUBOZOA_FFMPEG_PATH` | _(PATH lookup)_ | ffmpeg binary for HLS transcoding; transcoding is disabled if not found. |
 | `CUBOZOA_FFPROBE_PATH` | _(PATH lookup)_ | ffprobe binary for media metadata; scans record titles/years only if not found. |
 | `CUBOZOA_TMDB_API_KEY` | _(empty)_ | Enables TMDb metadata enrichment (overviews, ratings, genres, artwork). Disabled if unset. |
+| `CUBOZOA_TLS_CERT_FILE` / `CUBOZOA_TLS_KEY_FILE` | _(empty)_ | Serve HTTPS directly (TLS 1.2+). Set both, or terminate TLS at a proxy. |
+| `CUBOZOA_AUDIT_LOG_FILE` | _(stdout)_ | Append structured security-event (audit) JSON to this file. |
+| `CUBOZOA_LOCKOUT_THRESHOLD` / `CUBOZOA_LOCKOUT_MINUTES` | `5` / `15` | Failed logins before an account locks, and the cool-off window. `0` disables lockout. |
 
 ## Architecture
 

@@ -61,6 +61,7 @@ should not merge.
 | ffmpeg/ffprobe run with explicit argv (never a shell); sessions bounded & reaped | ✅ |
 | Subtitle delivery resolves by item ID + ordinal to a vetted file in the library root | ✅ |
 | Downloaded metadata artwork is size-capped and served only from the vetted cache dir | ✅ |
-| TLS termination / HTTPS guidance | ⏳ planned |
-| Account lockout / 2FA | ⏳ planned |
-| Audit logging | ⏳ planned |
+| Direct HTTPS serving (TLS 1.2+ floor) with HSTS over TLS | ✅ |
+| Account lockout after repeated failed logins (generic 401, no enumeration) | ✅ |
+| Structured audit logging of auth events (no secrets) | ✅ |
+| Two-factor authentication | ⏳ planned |

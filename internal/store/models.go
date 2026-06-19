@@ -12,6 +12,11 @@ type User struct {
 	IsAdmin      bool      `json:"is_admin"`
 	CreatedAt    time.Time `json:"created_at"`
 	LastLoginAt  time.Time `json:"last_login_at"`
+
+	// Brute-force protection: consecutive failed logins and, once the threshold
+	// is crossed, the time until which the account is locked.
+	FailedLoginAttempts int       `json:"failed_login_attempts,omitempty"`
+	LockedUntil         time.Time `json:"locked_until,omitempty"`
 }
 
 // Session is an authenticated client session. The access token is never stored

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config holds the fully resolved runtime configuration.
@@ -60,28 +61,51 @@ type Config struct {
 	TMDbAPIKey    string
 	TMDbBaseURL   string
 	TMDbImageBase string
+
+	// TLSCertFile and TLSKeyFile, when both set, make the server listen over
+	// HTTPS directly (otherwise it serves plain HTTP, e.g. behind a TLS proxy).
+	TLSCertFile string
+	TLSKeyFile  string
+
+	// AuditLogFile, when set, appends structured security events to this file
+	// (otherwise they go to stdout alongside operational logs).
+	AuditLogFile string
+
+	// LockoutThreshold is the number of consecutive failed logins that locks an
+	// account; 0 disables lockout. LockoutDuration is the cool-off window.
+	LockoutThreshold int
+	LockoutDuration  time.Duration
 }
 
 // Load resolves configuration from the environment, applying defaults.
 func Load() (*Config, error) {
 	c := &Config{
-		BindAddress:    env("CUBOZOA_BIND_ADDRESS", ":8096"),
-		DataDir:        env("CUBOZOA_DATA_DIR", defaultDataDir()),
-		MediaDir:       env("CUBOZOA_MEDIA_DIR", ""),
-		ServerName:     env("CUBOZOA_SERVER_NAME", defaultServerName()),
-		PublicBaseURL:  strings.TrimRight(env("CUBOZOA_PUBLIC_BASE_URL", ""), "/"),
-		AdminUsername:  env("CUBOZOA_ADMIN_USERNAME", "admin"),
-		AdminPassword:  env("CUBOZOA_ADMIN_PASSWORD", ""),
-		TrustedProxies: envBool("CUBOZOA_TRUST_PROXY_HEADERS", false),
-		FFmpegPath:     env("CUBOZOA_FFMPEG_PATH", ""),
-		FFprobePath:    env("CUBOZOA_FFPROBE_PATH", ""),
-		TMDbAPIKey:     env("CUBOZOA_TMDB_API_KEY", ""),
-		TMDbBaseURL:    env("CUBOZOA_TMDB_BASE_URL", ""),
-		TMDbImageBase:  env("CUBOZOA_TMDB_IMAGE_BASE", ""),
+		BindAddress:      env("CUBOZOA_BIND_ADDRESS", ":8096"),
+		DataDir:          env("CUBOZOA_DATA_DIR", defaultDataDir()),
+		MediaDir:         env("CUBOZOA_MEDIA_DIR", ""),
+		ServerName:       env("CUBOZOA_SERVER_NAME", defaultServerName()),
+		PublicBaseURL:    strings.TrimRight(env("CUBOZOA_PUBLIC_BASE_URL", ""), "/"),
+		AdminUsername:    env("CUBOZOA_ADMIN_USERNAME", "admin"),
+		AdminPassword:    env("CUBOZOA_ADMIN_PASSWORD", ""),
+		TrustedProxies:   envBool("CUBOZOA_TRUST_PROXY_HEADERS", false),
+		FFmpegPath:       env("CUBOZOA_FFMPEG_PATH", ""),
+		FFprobePath:      env("CUBOZOA_FFPROBE_PATH", ""),
+		TMDbAPIKey:       env("CUBOZOA_TMDB_API_KEY", ""),
+		TMDbBaseURL:      env("CUBOZOA_TMDB_BASE_URL", ""),
+		TMDbImageBase:    env("CUBOZOA_TMDB_IMAGE_BASE", ""),
+		TLSCertFile:      env("CUBOZOA_TLS_CERT_FILE", ""),
+		TLSKeyFile:       env("CUBOZOA_TLS_KEY_FILE", ""),
+		AuditLogFile:     env("CUBOZOA_AUDIT_LOG_FILE", ""),
+		LockoutThreshold: envInt("CUBOZOA_LOCKOUT_THRESHOLD", 5),
+		LockoutDuration:  time.Duration(envInt("CUBOZOA_LOCKOUT_MINUTES", 15)) * time.Minute,
 	}
 
 	if c.AdminUsername == "" {
 		return nil, fmt.Errorf("config: CUBOZOA_ADMIN_USERNAME must not be empty")
+	}
+
+	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
+		return nil, fmt.Errorf("config: CUBOZOA_TLS_CERT_FILE and CUBOZOA_TLS_KEY_FILE must be set together")
 	}
 
 	abs, err := filepath.Abs(c.DataDir)
@@ -104,6 +128,18 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+func envInt(key string, def int) int {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return def
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(v))
+	if err != nil {
+		return def
+	}
+	return n
 }
 
 func envBool(key string, def bool) bool {
