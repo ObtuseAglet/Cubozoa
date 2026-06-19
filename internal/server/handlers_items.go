@@ -72,23 +72,22 @@ func (s *Server) handleItemsLatest(w http.ResponseWriter, r *http.Request) {
 		Recursive:        true,
 		SortBy:           "DateCreated",
 		SortDescending:   true,
-		Limit:            limit,
 	})
 	if err != nil {
 		s.writeError(w, http.StatusInternalServerError)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, s.itemsToDtos(items, s.userData.Map(userFrom(r).ID)))
-}
-
-// GET /Shows/NextUp — empty until episode tracking exists, but returning a
-// well-formed result keeps the home screen from erroring.
-func (s *Server) handleNextUp(w http.ResponseWriter, r *http.Request) {
-	s.writeJSON(w, http.StatusOK, jellyfin.QueryResult[jellyfin.BaseItemDto]{
-		Items:            []jellyfin.BaseItemDto{},
-		TotalRecordCount: 0,
-		StartIndex:       0,
-	})
+	// "Latest" shows playable media, not the synthetic Series/Season folders.
+	playable := items[:0]
+	for _, it := range items {
+		if !isFolderType(it.Type) {
+			playable = append(playable, it)
+		}
+		if len(playable) >= limit {
+			break
+		}
+	}
+	s.writeJSON(w, http.StatusOK, s.itemsToDtos(playable, s.userData.Map(userFrom(r).ID)))
 }
 
 // GET /Library/VirtualFolders — admin listing of configured libraries.

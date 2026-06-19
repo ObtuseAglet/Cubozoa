@@ -31,6 +31,16 @@ type MediaItem struct {
 	SizeBytes      int64     `json:"size_bytes"`
 	DateCreated    time.Time `json:"date_created"`
 
+	// TV hierarchy. Series and Season are synthetic folder items (no media
+	// file); Episodes link back to their season and series and carry their
+	// numbering. ChildCount is populated for folder items.
+	ChildCount        int    `json:"child_count,omitempty"`
+	SeriesID          string `json:"series_id,omitempty"`
+	SeriesName        string `json:"series_name,omitempty"`
+	SeasonID          string `json:"season_id,omitempty"`
+	IndexNumber       int    `json:"index_number,omitempty"`        // episode number, or season number on a Season
+	ParentIndexNumber int    `json:"parent_index_number,omitempty"` // season number on an Episode
+
 	// Probed metadata (populated by ffprobe when available). RunTimeTicks is in
 	// Jellyfin's 100-nanosecond ticks. Streams describes the contained tracks.
 	RunTimeTicks int64             `json:"run_time_ticks,omitempty"`

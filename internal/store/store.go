@@ -44,6 +44,7 @@ type Store interface {
 	// Media items
 	GetItem(id string) (*MediaItem, error)
 	ListItemsByLibrary(libraryID string) ([]*MediaItem, error)
+	ListItemsByParent(parentID string) ([]*MediaItem, error)
 	AllItems() ([]*MediaItem, error)
 	// ReplaceLibraryItems atomically swaps the full item set for a library and
 	// updates the library's item count and scan time in a single flush. This is

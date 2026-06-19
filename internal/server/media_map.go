@@ -27,19 +27,25 @@ func (s *Server) libraryToDto(lib *store.Library) jellyfin.BaseItemDto {
 // intentionally never copied into the DTO.
 func (s *Server) itemToDto(it *store.MediaItem, ud *store.UserItemData) jellyfin.BaseItemDto {
 	dto := jellyfin.BaseItemDto{
-		Name:           it.Name,
-		ServerID:       s.store.ServerID(),
-		ID:             it.ID,
-		Type:           it.Type,
-		MediaType:      it.MediaType,
-		IsFolder:       it.Type == "Folder",
-		ParentID:       it.ParentID,
-		ProductionYear: it.ProductionYear,
-		Container:      it.Container,
-		SortName:       it.SortName,
-		RunTimeTicks:   it.RunTimeTicks,
-		LocationType:   "FileSystem",
-		UserData:       userDataDto(it.ID, ud),
+		Name:              it.Name,
+		ServerID:          s.store.ServerID(),
+		ID:                it.ID,
+		Type:              it.Type,
+		MediaType:         it.MediaType,
+		IsFolder:          isFolderType(it.Type),
+		ParentID:          it.ParentID,
+		ProductionYear:    it.ProductionYear,
+		Container:         it.Container,
+		SortName:          it.SortName,
+		RunTimeTicks:      it.RunTimeTicks,
+		ChildCount:        it.ChildCount,
+		SeriesID:          it.SeriesID,
+		SeriesName:        it.SeriesName,
+		SeasonID:          it.SeasonID,
+		IndexNumber:       it.IndexNumber,
+		ParentIndexNumber: it.ParentIndexNumber,
+		LocationType:      "FileSystem",
+		UserData:          userDataDto(it.ID, ud),
 	}
 	if !it.DateCreated.IsZero() {
 		dto.DateCreated = it.DateCreated.Format(time.RFC3339Nano)
@@ -53,6 +59,16 @@ func (s *Server) itemToDto(it *store.MediaItem, ud *store.UserItemData) jellyfin
 		dto.BackdropImageTags = []string{it.BackdropImageTag}
 	}
 	return dto
+}
+
+// isFolderType reports whether an item type is a browsable container.
+func isFolderType(t string) bool {
+	switch t {
+	case "Series", "Season", "Folder":
+		return true
+	default:
+		return false
+	}
 }
 
 // userDataDto builds the per-user playback DTO. A nil ud yields a clean,

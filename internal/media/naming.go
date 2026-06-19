@@ -1,6 +1,7 @@
 package media
 
 import (
+	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -111,6 +112,107 @@ func itemTypeFor(libraryType, kind string) string {
 		}
 		return "Video"
 	}
+}
+
+// episodeRe matches the common "S01E02" form (with optional separators), and
+// seasonXEpisode matches the "1x02" form.
+var (
+	episodeRe       = regexp.MustCompile(`(?i)s(\d{1,2})[ ._-]*e(\d{1,3})`)
+	seasonXEpisode  = regexp.MustCompile(`(?i)\b(\d{1,2})x(\d{1,3})\b`)
+	seasonFolderRe  = regexp.MustCompile(`(?i)^(?:season|series|s)[ ._-]*(\d{1,2})$`)
+	episodeTitleCut = regexp.MustCompile(`(?i)s\d{1,2}[ ._-]*e\d{1,3}|\d{1,2}x\d{1,3}`)
+)
+
+// parseEpisode derives series name, season number, episode number and episode
+// title from a media file's path segments relative to the library root. It
+// handles the typical "Series/Season NN/Series - SxxEyy - Title.ext" layout as
+// well as flatter arrangements, falling back to sensible defaults so a file is
+// never dropped.
+func parseEpisode(relParts []string) (seriesName string, season, episode int, title string) {
+	filename := relParts[len(relParts)-1]
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+
+	// Series name: the top-level folder under the library, when present.
+	if len(relParts) >= 2 {
+		seriesName = cleanTitle(relParts[0])
+	} else {
+		seriesName = cleanTitle(stripEpisodeTokens(base))
+	}
+	if seriesName == "" {
+		seriesName = "Unknown"
+	}
+
+	season, episode = -1, -1
+	spaced := separatorRe.ReplaceAllString(base, " ")
+	if m := episodeRe.FindStringSubmatch(spaced); m != nil {
+		season = atoiDefault(m[1], 1)
+		episode = atoiDefault(m[2], 0)
+	} else if m := seasonXEpisode.FindStringSubmatch(spaced); m != nil {
+		season = atoiDefault(m[1], 1)
+		episode = atoiDefault(m[2], 0)
+	}
+
+	// Season can also come from a "Season NN" folder when the filename lacks it.
+	if season < 0 && len(relParts) >= 2 {
+		for _, seg := range relParts[:len(relParts)-1] {
+			if m := seasonFolderRe.FindStringSubmatch(seg); m != nil {
+				season = atoiDefault(m[1], 1)
+				break
+			}
+		}
+	}
+	if season < 0 {
+		season = 1
+	}
+	if episode < 0 {
+		episode = 0
+	}
+
+	title = episodeTitle(base)
+	if title == "" {
+		if episode > 0 {
+			title = fmt.Sprintf("Episode %d", episode)
+		} else {
+			title = cleanTitle(base)
+		}
+	}
+	return seriesName, season, episode, title
+}
+
+// episodeTitle returns the human title that follows the SxxEyy token.
+func episodeTitle(base string) string {
+	spaced := separatorRe.ReplaceAllString(base, " ")
+	loc := episodeTitleCut.FindStringIndex(spaced)
+	if loc == nil {
+		return ""
+	}
+	rest := strings.TrimSpace(spaced[loc[1]:])
+	rest = strings.Trim(rest, " -_.")
+	rest = junkRe.ReplaceAllString(rest, " ")
+	rest = multiSpaceRe.ReplaceAllString(rest, " ")
+	return strings.TrimSpace(rest)
+}
+
+// stripEpisodeTokens removes SxxEyy / NxM markers from a string.
+func stripEpisodeTokens(s string) string {
+	s = episodeRe.ReplaceAllString(s, " ")
+	s = seasonXEpisode.ReplaceAllString(s, " ")
+	return s
+}
+
+// cleanTitle normalizes a folder/file fragment into a display title.
+func cleanTitle(s string) string {
+	s = separatorRe.ReplaceAllString(s, " ")
+	s = junkRe.ReplaceAllString(s, " ")
+	s = multiSpaceRe.ReplaceAllString(s, " ")
+	return strings.TrimSpace(strings.Trim(s, " -()[]"))
+}
+
+func atoiDefault(s string, def int) int {
+	if n, err := strconv.Atoi(s); err == nil {
+		return n
+	}
+	return def
 }
 
 func containsAny(s string, subs ...string) bool {

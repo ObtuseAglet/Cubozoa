@@ -79,5 +79,11 @@ validated and the input path is resolved server-side via `media.ItemStream`
 so don't register a separate `HEAD` route (it conflicts with literal sibling
 paths like `main.m3u8`).
 
-Open next: M3b (optional external metadata: TMDb/TVDb) and a proper
-Series/Season/Episode hierarchy for TV (episodes are a flat list today).
+M5 (TV hierarchy) is done: a "tvshows" library is scanned into synthetic
+Series and Season folder items plus Episodes (parsed from `SxxEyy`/`NxM`/`Season
+NN` in `media/naming.go`); browse is parent-based (`ListItemsByParent`), and
+`/Shows/{id}/Seasons`, `/Shows/{id}/Episodes`, and `/Shows/NextUp` back the
+client's series pages. Movies/other libraries stay flat.
+
+Open next: M3b (optional external metadata: TMDb/TVDb), subtitles, and
+adaptive/seek-aware transcoding.

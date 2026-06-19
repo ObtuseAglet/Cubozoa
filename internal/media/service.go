@@ -193,6 +193,73 @@ func (s *Service) Item(id string) (*store.MediaItem, error) {
 	return s.store.GetItem(id)
 }
 
+// Seasons returns a series' seasons, ordered by season number.
+func (s *Service) Seasons(seriesID string) ([]*store.MediaItem, error) {
+	all, err := s.store.AllItems()
+	if err != nil {
+		return nil, err
+	}
+	var out []*store.MediaItem
+	for _, it := range all {
+		if it.Type == "Season" && it.SeriesID == seriesID {
+			out = append(out, it)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].IndexNumber < out[j].IndexNumber })
+	return out, nil
+}
+
+// Episodes returns a series' episodes, ordered by season then episode number.
+// If seasonID is non-empty, only that season's episodes are returned.
+func (s *Service) Episodes(seriesID, seasonID string) ([]*store.MediaItem, error) {
+	all, err := s.store.AllItems()
+	if err != nil {
+		return nil, err
+	}
+	var out []*store.MediaItem
+	for _, it := range all {
+		if it.Type != "Episode" || it.SeriesID != seriesID {
+			continue
+		}
+		if seasonID != "" && it.SeasonID != seasonID {
+			continue
+		}
+		out = append(out, it)
+	}
+	sortEpisodes(out)
+	return out, nil
+}
+
+// AllEpisodes returns every episode across all libraries, ordered within each
+// series by season then episode. Used to compute "Next Up".
+func (s *Service) AllEpisodes() ([]*store.MediaItem, error) {
+	all, err := s.store.AllItems()
+	if err != nil {
+		return nil, err
+	}
+	var out []*store.MediaItem
+	for _, it := range all {
+		if it.Type == "Episode" {
+			out = append(out, it)
+		}
+	}
+	sortEpisodes(out)
+	return out, nil
+}
+
+func sortEpisodes(eps []*store.MediaItem) {
+	sort.Slice(eps, func(i, j int) bool {
+		a, b := eps[i], eps[j]
+		if a.SeriesID != b.SeriesID {
+			return a.SeriesID < b.SeriesID
+		}
+		if a.ParentIndexNumber != b.ParentIndexNumber {
+			return a.ParentIndexNumber < b.ParentIndexNumber
+		}
+		return a.IndexNumber < b.IndexNumber
+	})
+}
+
 // ErrNoImage indicates the requested image does not exist for an item.
 var ErrNoImage = errors.New("media: no such image")
 
@@ -296,7 +363,9 @@ func (s *Service) Browse(q BrowseQuery) ([]*store.MediaItem, int, error) {
 	case q.Recursive || q.ParentID == "":
 		candidates, err = s.store.AllItems()
 	default:
-		candidates, err = s.store.ListItemsByLibrary(q.ParentID)
+		// Direct children of the parent: movies under a library, series under a
+		// tvshows library, seasons under a series, episodes under a season.
+		candidates, err = s.store.ListItemsByParent(q.ParentID)
 	}
 	if err != nil {
 		return nil, 0, err

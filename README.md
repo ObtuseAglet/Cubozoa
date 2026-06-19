@@ -31,7 +31,8 @@ scanned from disk (with **poster/backdrop artwork** and **ffprobe-sourced
 durations and codecs**), **play media** — via direct play with full seek support
 (HTTP Range) or **on-demand HLS transcoding** (ffmpeg) for formats a client
 can't play natively — and **resume where it left off** (per-user position,
-watched status and favorites persist across restarts). See
+watched status and favorites persist across restarts). **TV libraries** are
+organized into Series → Season → Episode with a working "Next Up". See
 [the roadmap](#roadmap) for what is next.
 
 ffmpeg and ffprobe are **optional**: when present, Cubozoa probes media for
@@ -142,6 +143,10 @@ Highlights enforced in code today:
 - [x] **M4c — Resume & watched state.** Per-user resume position, played status
       and favorites persist across restarts and surface in item DTOs and a
       "Continue Watching" (`/Users/{id}/Items/Resume`) row. *(done)*
+- [x] **M5 — TV hierarchy.** "tvshows" libraries are organized into
+      Series → Season → Episode from filenames (`SxxEyy`/`NxM`/`Season NN`),
+      with `/Shows/{id}/Seasons`, `/Shows/{id}/Episodes`, and a real
+      `/Shows/NextUp`. *(done)*
 - [x] **M4b — Transcoding & metadata.** ffprobe-sourced durations/codecs in
       browse and `PlaybackInfo`, plus on-demand HLS transcoding via ffmpeg
       (advertised only when ffmpeg is present). *(done)*

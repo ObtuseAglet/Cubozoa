@@ -336,6 +336,19 @@ func (s *jsonStore) ListItemsByLibrary(libraryID string) ([]*MediaItem, error) {
 	return out, nil
 }
 
+func (s *jsonStore) ListItemsByParent(parentID string) ([]*MediaItem, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*MediaItem, 0)
+	for _, it := range s.items {
+		if it.ParentID == parentID {
+			clone := *it
+			out = append(out, &clone)
+		}
+	}
+	return out, nil
+}
+
 func (s *jsonStore) AllItems() ([]*MediaItem, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

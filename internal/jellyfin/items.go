@@ -5,21 +5,29 @@ package jellyfin
 // declared; clients tolerate omitted optional fields. The on-disk path is
 // deliberately absent — it is never sent to clients.
 type BaseItemDto struct {
-	Name              string            `json:"Name"`
-	ServerID          string            `json:"ServerId"`
-	ID                string            `json:"Id"`
-	Type              string            `json:"Type"`
-	IsFolder          bool              `json:"IsFolder"`
-	CollectionType    string            `json:"CollectionType,omitempty"`
-	MediaType         string            `json:"MediaType,omitempty"`
-	ParentID          string            `json:"ParentId,omitempty"`
-	ProductionYear    int               `json:"ProductionYear,omitempty"`
-	RunTimeTicks      int64             `json:"RunTimeTicks,omitempty"`
-	Container         string            `json:"Container,omitempty"`
-	SortName          string            `json:"SortName,omitempty"`
-	DateCreated       string            `json:"DateCreated,omitempty"`
-	ChildCount        int               `json:"ChildCount,omitempty"`
-	LocationType      string            `json:"LocationType,omitempty"`
+	Name           string `json:"Name"`
+	ServerID       string `json:"ServerId"`
+	ID             string `json:"Id"`
+	Type           string `json:"Type"`
+	IsFolder       bool   `json:"IsFolder"`
+	CollectionType string `json:"CollectionType,omitempty"`
+	MediaType      string `json:"MediaType,omitempty"`
+	ParentID       string `json:"ParentId,omitempty"`
+	ProductionYear int    `json:"ProductionYear,omitempty"`
+	RunTimeTicks   int64  `json:"RunTimeTicks,omitempty"`
+	Container      string `json:"Container,omitempty"`
+	SortName       string `json:"SortName,omitempty"`
+	DateCreated    string `json:"DateCreated,omitempty"`
+	ChildCount     int    `json:"ChildCount,omitempty"`
+	LocationType   string `json:"LocationType,omitempty"`
+
+	// TV hierarchy fields. IndexNumber is the episode number (or season number
+	// on a Season); ParentIndexNumber is the season number on an Episode.
+	SeriesID          string            `json:"SeriesId,omitempty"`
+	SeriesName        string            `json:"SeriesName,omitempty"`
+	SeasonID          string            `json:"SeasonId,omitempty"`
+	IndexNumber       int               `json:"IndexNumber,omitempty"`
+	ParentIndexNumber int               `json:"ParentIndexNumber,omitempty"`
 	ImageTags         map[string]string `json:"ImageTags,omitempty"`
 	BackdropImageTags []string          `json:"BackdropImageTags,omitempty"`
 	UserData          *UserItemDataDto  `json:"UserData,omitempty"`
