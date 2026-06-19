@@ -9,6 +9,21 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/store"
 )
 
+// GET /Artists and /Artists/AlbumArtists — the music artists, optionally scoped
+// to one library via ?ParentId=.
+func (s *Server) handleArtists(w http.ResponseWriter, r *http.Request) {
+	artists, err := s.media.Artists(r.URL.Query().Get("ParentId"))
+	if err != nil {
+		s.writeError(w, http.StatusInternalServerError)
+		return
+	}
+	udMap := s.userData.Map(userFrom(r).ID)
+	s.writeJSON(w, http.StatusOK, jellyfin.QueryResult[jellyfin.BaseItemDto]{
+		Items:            s.itemsToDtos(artists, udMap),
+		TotalRecordCount: len(artists),
+	})
+}
+
 // GET /Shows/{seriesId}/Seasons — the seasons of a series, ordered by number.
 func (s *Server) handleSeasons(w http.ResponseWriter, r *http.Request) {
 	seriesID := r.PathValue("seriesId")

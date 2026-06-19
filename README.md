@@ -32,10 +32,11 @@ durations and codecs**), **play media** — via direct play with full seek suppo
 (HTTP Range) or **on-demand HLS transcoding** (ffmpeg) for formats a client
 can't play natively — and **resume where it left off** (per-user position,
 watched status and favorites persist across restarts). **TV libraries** are
-organized into Series → Season → Episode with a working "Next Up". **External
-subtitles** are delivered (with SubRip→WebVTT conversion), and an optional
-**TMDb provider** enriches items with overviews, ratings, genres and artwork.
-See [the roadmap](#roadmap) for what is next.
+organized into Series → Season → Episode (with "Next Up"), and **music** into
+Artist → Album → Track. **External subtitles** are delivered (SubRip→WebVTT),
+an optional **TMDb provider** enriches items, and the edge is hardened with
+**HTTPS, account lockout and audit logging**. See [the roadmap](#roadmap) for
+what is next.
 
 ffmpeg and ffprobe are **optional**: when present, Cubozoa probes media for
 metadata and offers HLS transcoding; when absent, direct play still works and
@@ -157,6 +158,11 @@ Highlights enforced in code today:
       Series → Season → Episode from filenames (`SxxEyy`/`NxM`/`Season NN`),
       with `/Shows/{id}/Seasons`, `/Shows/{id}/Episodes`, and a real
       `/Shows/NextUp`. *(done)*
+- [x] **Music hierarchy.** "music" libraries are organized into
+      MusicArtist → MusicAlbum → Audio (track) from the `Artist/Album/NN Title`
+      layout, with an `/Artists` endpoint. *(done)*
+- [x] **Edge hardening.** Direct HTTPS (TLS 1.2+) with HSTS, persistent account
+      lockout (no user enumeration), and structured audit logging. *(done)*
 - [x] **M4b — Transcoding & metadata.** ffprobe-sourced durations/codecs in
       browse and `PlaybackInfo`, plus on-demand HLS transcoding via ffmpeg
       (advertised only when ffmpeg is present). *(done)*

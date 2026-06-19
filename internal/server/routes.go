@@ -48,6 +48,8 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /Shows/NextUp", s.requireAuth(s.handleNextUp))
 	mux.HandleFunc("GET /Shows/{seriesId}/Seasons", s.requireAuth(s.handleSeasons))
 	mux.HandleFunc("GET /Shows/{seriesId}/Episodes", s.requireAuth(s.handleEpisodes))
+	mux.HandleFunc("GET /Artists", s.requireAuth(s.handleArtists))
+	mux.HandleFunc("GET /Artists/AlbumArtists", s.requireAuth(s.handleArtists))
 	mux.HandleFunc("GET /Users/{userId}/Items/Resume", s.requireAuth(s.handleResumeItems))
 
 	// --- Watched & favorite state (authenticated) ---

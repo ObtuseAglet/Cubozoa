@@ -29,6 +29,12 @@ type BaseItemDto struct {
 	IndexNumber       int    `json:"IndexNumber,omitempty"`
 	ParentIndexNumber int    `json:"ParentIndexNumber,omitempty"`
 
+	// Music fields.
+	Album       string   `json:"Album,omitempty"`
+	AlbumID     string   `json:"AlbumId,omitempty"`
+	AlbumArtist string   `json:"AlbumArtist,omitempty"`
+	Artists     []string `json:"Artists,omitempty"`
+
 	// External metadata.
 	Overview        string   `json:"Overview,omitempty"`
 	CommunityRating float64  `json:"CommunityRating,omitempty"`

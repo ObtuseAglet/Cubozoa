@@ -38,8 +38,16 @@ type MediaItem struct {
 	SeriesID          string `json:"series_id,omitempty"`
 	SeriesName        string `json:"series_name,omitempty"`
 	SeasonID          string `json:"season_id,omitempty"`
-	IndexNumber       int    `json:"index_number,omitempty"`        // episode number, or season number on a Season
+	IndexNumber       int    `json:"index_number,omitempty"`        // episode/track number, or season number on a Season
 	ParentIndexNumber int    `json:"parent_index_number,omitempty"` // season number on an Episode
+
+	// Music hierarchy. MusicArtist and MusicAlbum are synthetic folder items;
+	// Audio tracks link back to their album and artist.
+	ArtistID    string   `json:"artist_id,omitempty"`
+	AlbumID     string   `json:"album_id,omitempty"`
+	Album       string   `json:"album,omitempty"`
+	AlbumArtist string   `json:"album_artist,omitempty"`
+	Artists     []string `json:"artists,omitempty"`
 
 	// Probed metadata (populated by ffprobe when available). RunTimeTicks is in
 	// Jellyfin's 100-nanosecond ticks. Streams describes the contained tracks.

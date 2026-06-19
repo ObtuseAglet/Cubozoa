@@ -40,9 +40,12 @@ func Scan(lib *store.Library) ([]*store.MediaItem, error) {
 
 	lister := newDirLister()
 	var items []*store.MediaItem
-	if lib.Type == "tvshows" {
+	switch lib.Type {
+	case "tvshows":
 		items = buildEpisodes(lib, files, lister)
-	} else {
+	case "music":
+		items = buildTracks(lib, files, lister)
+	default:
 		items = buildFlat(lib, files, lister)
 	}
 
@@ -207,6 +210,96 @@ func buildEpisodes(lib *store.Library, files []scannedFile, lister *dirLister) [
 	return out
 }
 
+// buildTracks organizes a music library into MusicArtist → MusicAlbum → Audio.
+// Artist and Album are synthetic folder items; each track links back to them
+// and carries its track number.
+func buildTracks(lib *store.Library, files []scannedFile, lister *dirLister) []*store.MediaItem {
+	artists := map[string]*store.MediaItem{}
+	albums := map[string]*store.MediaItem{}
+	var tracks []*store.MediaItem
+
+	for _, f := range files {
+		artistName, albumName, trackNum, title := parseTrack(f.relParts)
+
+		aID := artistID(lib.ID, artistName)
+		if _, ok := artists[aID]; !ok {
+			art := &store.MediaItem{
+				ID:          aID,
+				LibraryID:   lib.ID,
+				ParentID:    lib.ID,
+				Name:        artistName,
+				SortName:    strings.ToLower(artistName),
+				Type:        "MusicArtist",
+				DateCreated: f.info.ModTime().UTC(),
+				ArtistID:    aID,
+			}
+			applyFolderArtwork(art, lister, filepath.Join(lib.Path, f.relParts[0]))
+			artists[aID] = art
+		}
+
+		alID := albumID(aID, albumName)
+		if _, ok := albums[alID]; !ok {
+			al := &store.MediaItem{
+				ID:          alID,
+				LibraryID:   lib.ID,
+				ParentID:    aID,
+				Name:        albumName,
+				SortName:    strings.ToLower(albumName),
+				Type:        "MusicAlbum",
+				DateCreated: f.info.ModTime().UTC(),
+				ArtistID:    aID,
+				AlbumID:     alID,
+				Album:       albumName,
+				AlbumArtist: artistName,
+				Artists:     []string{artistName},
+			}
+			if len(f.relParts) >= 3 {
+				applyFolderArtwork(al, lister, filepath.Join(lib.Path, f.relParts[0], f.relParts[1]))
+			}
+			albums[alID] = al
+		}
+
+		track := &store.MediaItem{
+			ID:          itemID(f.path),
+			LibraryID:   lib.ID,
+			ParentID:    alID,
+			Name:        title,
+			SortName:    fmt.Sprintf("%04d", trackNum),
+			Type:        "Audio",
+			MediaType:   "Audio",
+			Path:        f.path,
+			Container:   f.container,
+			SizeBytes:   f.info.Size(),
+			DateCreated: f.info.ModTime().UTC(),
+			ArtistID:    aID,
+			AlbumID:     alID,
+			Album:       albumName,
+			AlbumArtist: artistName,
+			Artists:     []string{artistName},
+			IndexNumber: trackNum,
+		}
+		applyArtwork(track, lister, f.path)
+		tracks = append(tracks, track)
+		albums[alID].ChildCount++
+	}
+
+	for _, al := range albums {
+		if art, ok := artists[al.ArtistID]; ok {
+			art.ChildCount++
+		}
+	}
+
+	out := make([]*store.MediaItem, 0, len(artists)+len(albums)+len(tracks))
+	for _, a := range artists {
+		out = append(out, a)
+	}
+	for _, al := range albums {
+		out = append(out, al)
+	}
+	out = append(out, tracks...)
+	return out
+}
+
 // applyArtwork attaches name-matched poster/backdrop images for a media file.
 func applyArtwork(item *store.MediaItem, lister *dirLister, path string) {
 	if primary, backdrop := findArtwork(lister, path); primary != "" || backdrop != "" {
@@ -259,6 +352,14 @@ func seriesID(libraryID, name string) string {
 
 func seasonID(sID string, season int) string {
 	return hashID(fmt.Sprintf("season:%s:%d", sID, season))
+}
+
+func artistID(libraryID, name string) string {
+	return hashID("artist:" + libraryID + ":" + strings.ToLower(name))
+}
+
+func albumID(aID, name string) string {
+	return hashID("album:" + aID + ":" + strings.ToLower(name))
 }
 
 // libraryID derives a stable identifier for a library from its path, for the

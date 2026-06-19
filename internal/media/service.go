@@ -360,6 +360,27 @@ func (s *Service) Episodes(seriesID, seasonID string) ([]*store.MediaItem, error
 	return out, nil
 }
 
+// Artists returns the music artists, optionally limited to one library,
+// ordered by name.
+func (s *Service) Artists(libraryID string) ([]*store.MediaItem, error) {
+	all, err := s.store.AllItems()
+	if err != nil {
+		return nil, err
+	}
+	var out []*store.MediaItem
+	for _, it := range all {
+		if it.Type != "MusicArtist" {
+			continue
+		}
+		if libraryID != "" && it.LibraryID != libraryID {
+			continue
+		}
+		out = append(out, it)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SortName < out[j].SortName })
+	return out, nil
+}
+
 // AllEpisodes returns every episode across all libraries, ordered within each
 // series by season then episode. Used to compute "Next Up".
 func (s *Service) AllEpisodes() ([]*store.MediaItem, error) {

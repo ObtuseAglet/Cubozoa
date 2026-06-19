@@ -77,6 +77,47 @@ func parseName(filename string) (title string, year int) {
 	return title, year
 }
 
+// trackNumberRe matches a leading track number, e.g. "01 - ", "1.", "03_".
+var trackNumberRe = regexp.MustCompile(`^\s*(\d{1,3})\s*[-._)\s]+\s*`)
+
+// parseTrack derives artist, album, track number and title from a music file's
+// path segments. The conventional "Artist/Album/NN Title" layout is handled, as
+// are flatter "Artist/NN Title" arrangements (album defaults to "Unknown
+// Album"). A leading number in the filename is read as the track number.
+func parseTrack(relParts []string) (artist, album string, track int, title string) {
+	filename := relParts[len(relParts)-1]
+	base := strings.TrimSuffix(filename, filepath.Ext(filename))
+
+	switch {
+	case len(relParts) >= 3:
+		artist = cleanTitle(relParts[0])
+		album = cleanTitle(relParts[1])
+	case len(relParts) == 2:
+		artist = cleanTitle(relParts[0])
+		album = "Unknown Album"
+	default:
+		artist = "Unknown Artist"
+		album = "Unknown Album"
+	}
+	if artist == "" {
+		artist = "Unknown Artist"
+	}
+	if album == "" {
+		album = "Unknown Album"
+	}
+
+	rest := base
+	if m := trackNumberRe.FindStringSubmatch(base); m != nil {
+		track = atoiDefault(m[1], 0)
+		rest = base[len(m[0]):]
+	}
+	title = cleanTitle(rest)
+	if title == "" {
+		title = cleanTitle(base)
+	}
+	return artist, album, track, title
+}
+
 // inferLibraryType guesses a Jellyfin CollectionType from a folder name, so an
 // operator can simply name a folder "Movies" or "TV Shows" and get the right
 // behavior without configuration.

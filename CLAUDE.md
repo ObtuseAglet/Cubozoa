@@ -100,5 +100,9 @@ enumeration; policy via `CUBOZOA_LOCKOUT_*`), and structured audit logging
 (`internal/audit`, events emitted from the auth handlers, optional
 `CUBOZOA_AUDIT_LOG_FILE`).
 
-Open next: music libraries (Artist/Album/Track), seek-aware/adaptive
-transcoding, embedded-subtitle extraction, 2FA.
+Music (M-music) is done: a "music" library is scanned into MusicArtist and
+MusicAlbum folder items plus Audio tracks (parsed from `Artist/Album/NN Title`
+in `media/naming.go` `parseTrack`); browse is parent-based and `/Artists` lists
+artists. Movies stay flat; tvshows use the Series/Season/Episode tree.
+
+Open next: seek-aware/adaptive transcoding, embedded-subtitle extraction, 2FA.

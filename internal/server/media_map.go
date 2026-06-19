@@ -47,6 +47,10 @@ func (s *Server) itemToDto(it *store.MediaItem, ud *store.UserItemData) jellyfin
 		Overview:          it.Overview,
 		CommunityRating:   it.CommunityRating,
 		Genres:            it.Genres,
+		Album:             it.Album,
+		AlbumID:           it.AlbumID,
+		AlbumArtist:       it.AlbumArtist,
+		Artists:           it.Artists,
 		LocationType:      "FileSystem",
 		UserData:          userDataDto(it.ID, ud),
 	}
@@ -67,7 +71,7 @@ func (s *Server) itemToDto(it *store.MediaItem, ud *store.UserItemData) jellyfin
 // isFolderType reports whether an item type is a browsable container.
 func isFolderType(t string) bool {
 	switch t {
-	case "Series", "Season", "Folder":
+	case "Series", "Season", "MusicArtist", "MusicAlbum", "Folder":
 		return true
 	default:
 		return false
