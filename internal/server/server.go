@@ -11,19 +11,27 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/config"
 	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/store"
+	"github.com/obtuseaglet/cubozoa/internal/transcode"
 	"github.com/obtuseaglet/cubozoa/internal/userdata"
 )
 
 // Server holds the dependencies shared by all handlers.
 type Server struct {
-	cfg      *config.Config
-	store    store.Store
-	auth     *auth.Service
-	media    *media.Service
-	userData *userdata.Service
-	log      *slog.Logger
+	cfg        *config.Config
+	store      store.Store
+	auth       *auth.Service
+	media      *media.Service
+	userData   *userdata.Service
+	transcoder *transcode.Manager // optional; nil disables transcoding
+	log        *slog.Logger
 
 	limiter *rateLimiter
+}
+
+// SetTranscoder enables HLS transcoding. A nil manager leaves transcoding off
+// (direct play still works), so this is safe to skip when ffmpeg is absent.
+func (s *Server) SetTranscoder(m *transcode.Manager) {
+	s.transcoder = m
 }
 
 // New constructs a Server.

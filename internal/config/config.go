@@ -47,6 +47,12 @@ type Config struct {
 	// spoofable client-address headers are ignored unless an operator running
 	// behind a reverse proxy explicitly opts in.
 	TrustedProxies bool
+
+	// FFmpegPath and FFprobePath locate the ffmpeg/ffprobe binaries used for
+	// transcoding and media probing. Empty means "look up on PATH"; if not
+	// found, those features are simply disabled (direct play still works).
+	FFmpegPath  string
+	FFprobePath string
 }
 
 // Load resolves configuration from the environment, applying defaults.
@@ -60,6 +66,8 @@ func Load() (*Config, error) {
 		AdminUsername:  env("CUBOZOA_ADMIN_USERNAME", "admin"),
 		AdminPassword:  env("CUBOZOA_ADMIN_PASSWORD", ""),
 		TrustedProxies: envBool("CUBOZOA_TRUST_PROXY_HEADERS", false),
+		FFmpegPath:     env("CUBOZOA_FFMPEG_PATH", ""),
+		FFprobePath:    env("CUBOZOA_FFPROBE_PATH", ""),
 	}
 
 	if c.AdminUsername == "" {

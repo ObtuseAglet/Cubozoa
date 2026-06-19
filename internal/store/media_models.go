@@ -31,6 +31,16 @@ type MediaItem struct {
 	SizeBytes      int64     `json:"size_bytes"`
 	DateCreated    time.Time `json:"date_created"`
 
+	// Probed metadata (populated by ffprobe when available). RunTimeTicks is in
+	// Jellyfin's 100-nanosecond ticks. Streams describes the contained tracks.
+	RunTimeTicks int64             `json:"run_time_ticks,omitempty"`
+	Width        int               `json:"width,omitempty"`
+	Height       int               `json:"height,omitempty"`
+	VideoCodec   string            `json:"video_codec,omitempty"`
+	AudioCodec   string            `json:"audio_codec,omitempty"`
+	Bitrate      int               `json:"bitrate,omitempty"`
+	Streams      []MediaStreamInfo `json:"streams,omitempty"`
+
 	// Local artwork discovered next to the media file. Paths are internal and
 	// never sent to clients; the tags are content fingerprints clients use for
 	// cache-busting on the image endpoints.
@@ -38,6 +48,21 @@ type MediaItem struct {
 	PrimaryImageTag   string `json:"primary_image_tag,omitempty"`
 	BackdropImagePath string `json:"backdrop_image_path,omitempty"`
 	BackdropImageTag  string `json:"backdrop_image_tag,omitempty"`
+}
+
+// MediaStreamInfo describes a single track within a media file, as discovered
+// by ffprobe. Codec and language details let clients decide playability and
+// pick tracks.
+type MediaStreamInfo struct {
+	Index     int    `json:"index"`
+	Type      string `json:"type"` // Video, Audio, Subtitle
+	Codec     string `json:"codec"`
+	Language  string `json:"language,omitempty"`
+	Channels  int    `json:"channels,omitempty"`
+	Width     int    `json:"width,omitempty"`
+	Height    int    `json:"height,omitempty"`
+	IsDefault bool   `json:"is_default"`
+	Title     string `json:"title,omitempty"`
 }
 
 // UserItemData is per-user, per-item playback state: resume position, play

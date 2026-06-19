@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -17,21 +18,49 @@ import (
 // device profile and playback state — kilobytes at most.
 const maxPlaybackBody = 1 << 20 // 1 MiB
 
-// mediaSource builds the MediaSourceInfo advertised for an item. Direct play and
-// direct stream are offered; transcoding is not, until ffmpeg lands.
-func (s *Server) mediaSource(it *store.MediaItem) jellyfin.MediaSourceInfo {
-	return jellyfin.MediaSourceInfo{
+// mediaSource builds the MediaSourceInfo advertised for an item. Direct play is
+// always offered; transcoding is additionally offered when ffmpeg is available,
+// letting the client pick. The token is embedded in the transcoding URL so the
+// HLS playlist and segment requests authenticate.
+func (s *Server) mediaSource(it *store.MediaItem, token string) jellyfin.MediaSourceInfo {
+	src := jellyfin.MediaSourceInfo{
 		Protocol:             "File",
 		ID:                   it.ID,
 		Name:                 it.Name,
 		IsRemote:             false,
 		Container:            it.Container,
 		Size:                 it.SizeBytes,
+		RunTimeTicks:         it.RunTimeTicks,
 		SupportsDirectPlay:   true,
 		SupportsDirectStream: true,
-		SupportsTranscoding:  false,
-		MediaStreams:         []jellyfin.MediaStream{},
+		MediaStreams:         mediaStreams(it),
 	}
+	if s.transcoder != nil {
+		src.SupportsTranscoding = true
+		src.TranscodingSubProtocol = "hls"
+		src.TranscodingContainer = "ts"
+		src.TranscodingURL = "/Videos/" + it.ID + "/main.m3u8?api_key=" + url.QueryEscape(token)
+	}
+	return src
+}
+
+// mediaStreams maps stored stream metadata to the wire DTO.
+func mediaStreams(it *store.MediaItem) []jellyfin.MediaStream {
+	out := make([]jellyfin.MediaStream, 0, len(it.Streams))
+	for _, st := range it.Streams {
+		out = append(out, jellyfin.MediaStream{
+			Type:      st.Type,
+			Index:     st.Index,
+			Codec:     st.Codec,
+			Language:  st.Language,
+			Channels:  st.Channels,
+			Width:     st.Width,
+			Height:    st.Height,
+			Title:     st.Title,
+			IsDefault: st.IsDefault,
+		})
+	}
+	return out
 }
 
 // GET|POST /Items/{itemId}/PlaybackInfo — tell the client how it can play an
@@ -60,7 +89,7 @@ func (s *Server) handlePlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeJSON(w, http.StatusOK, jellyfin.PlaybackInfoResponse{
-		MediaSources:  []jellyfin.MediaSourceInfo{s.mediaSource(it)},
+		MediaSources:  []jellyfin.MediaSourceInfo{s.mediaSource(it, clientAuthFrom(r).Token)},
 		PlaySessionID: playSession,
 	})
 }

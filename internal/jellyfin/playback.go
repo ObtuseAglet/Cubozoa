@@ -24,6 +24,12 @@ type MediaSourceInfo struct {
 	MediaStreams         []MediaStream `json:"MediaStreams"`
 	RequiresOpening      bool          `json:"RequiresOpening"`
 	RequiresClosing      bool          `json:"RequiresClosing"`
+
+	// Transcoding hints (set only when transcoding is offered). The client
+	// fetches TranscodingUrl as an HLS playlist.
+	TranscodingURL         string `json:"TranscodingUrl,omitempty"`
+	TranscodingSubProtocol string `json:"TranscodingSubProtocol,omitempty"`
+	TranscodingContainer   string `json:"TranscodingContainer,omitempty"`
 }
 
 // MediaStream describes a single track (video, audio, subtitle) within a media
@@ -35,6 +41,10 @@ type MediaStream struct {
 	Index     int    `json:"Index"`
 	Codec     string `json:"Codec,omitempty"`
 	Language  string `json:"Language,omitempty"`
+	Channels  int    `json:"Channels,omitempty"`
+	Width     int    `json:"Width,omitempty"`
+	Height    int    `json:"Height,omitempty"`
+	Title     string `json:"Title,omitempty"`
 	IsDefault bool   `json:"IsDefault"`
 }
 

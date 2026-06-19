@@ -57,8 +57,12 @@ func (s *Server) routes() *http.ServeMux {
 	// --- Playback (authenticated) ---
 	mux.HandleFunc("GET /Items/{itemId}/PlaybackInfo", s.requireAuth(s.handlePlaybackInfo))
 	mux.HandleFunc("POST /Items/{itemId}/PlaybackInfo", s.requireAuth(s.handlePlaybackInfo))
+	// A GET pattern also matches HEAD in net/http's mux, so HEAD streaming and
+	// image probes work without a separate (and here, conflicting) registration.
+	mux.HandleFunc("GET /Videos/{id}/main.m3u8", s.requireAuth(s.handleHlsPlaylist))
+	mux.HandleFunc("GET /Videos/{id}/master.m3u8", s.requireAuth(s.handleHlsPlaylist))
+	mux.HandleFunc("GET /Videos/{id}/hls/{seg}", s.requireAuth(s.handleHlsSegment))
 	mux.HandleFunc("GET /Videos/{id}/{file}", s.requireAuth(s.handleVideoStream))
-	mux.HandleFunc("HEAD /Videos/{id}/{file}", s.requireAuth(s.handleVideoStream))
 	mux.HandleFunc("POST /Sessions/Playing", s.requireAuth(s.handlePlaybackReport))
 	mux.HandleFunc("POST /Sessions/Playing/Progress", s.requireAuth(s.handlePlaybackReport))
 	mux.HandleFunc("POST /Sessions/Playing/Stopped", s.requireAuth(s.handlePlaybackReport))
@@ -66,9 +70,7 @@ func (s *Server) routes() *http.ServeMux {
 	// --- Item images (authenticated; clients append ?api_key=) ---
 	// Registered for GET and HEAD, with and without the optional image index.
 	mux.HandleFunc("GET /Items/{id}/Images/{type}", s.requireAuth(s.handleItemImage))
-	mux.HandleFunc("HEAD /Items/{id}/Images/{type}", s.requireAuth(s.handleItemImage))
 	mux.HandleFunc("GET /Items/{id}/Images/{type}/{index}", s.requireAuth(s.handleItemImage))
-	mux.HandleFunc("HEAD /Items/{id}/Images/{type}/{index}", s.requireAuth(s.handleItemImage))
 
 	// --- Library administration ---
 	mux.HandleFunc("GET /Library/VirtualFolders", s.requireAdmin(s.handleVirtualFolders))

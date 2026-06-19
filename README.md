@@ -25,16 +25,20 @@ rather than an afterthought.
 ## Status
 
 Early development, but already a working media server for direct-play content.
-**Milestones 1–4c are complete:** an unmodified Jellyfin client can discover
-Cubozoa, log in, **browse libraries** scanned from disk (with **poster and
-backdrop artwork**), **play media** via direct play with full seek support (HTTP
-Range), and **resume where it left off** — per-user playback position, watched
-status and favorites persist across restarts. See [the roadmap](#roadmap) for
-what is next.
+**Milestones 1–4 (including 4b transcoding and 4c resume) are complete:** an
+unmodified Jellyfin client can discover Cubozoa, log in, **browse libraries**
+scanned from disk (with **poster/backdrop artwork** and **ffprobe-sourced
+durations and codecs**), **play media** — via direct play with full seek support
+(HTTP Range) or **on-demand HLS transcoding** (ffmpeg) for formats a client
+can't play natively — and **resume where it left off** (per-user position,
+watched status and favorites persist across restarts). See
+[the roadmap](#roadmap) for what is next.
 
-Transcoding is not implemented yet, so playback works for media a client can
-play natively; format conversion via ffmpeg is the next milestone. The
-compatibility and security model are proven end-to-end with tests.
+ffmpeg and ffprobe are **optional**: when present, Cubozoa probes media for
+metadata and offers HLS transcoding; when absent, direct play still works and
+those features are simply disabled. The compatibility and security model are
+proven end-to-end with tests (transcoding output is validated to be playable
+H.264/AAC).
 
 ## Quick start
 
@@ -74,6 +78,8 @@ All configuration is via environment variables; every one has a safe default.
 | `CUBOZOA_ADMIN_USERNAME` | `admin` | Username for the seeded first-run admin. |
 | `CUBOZOA_ADMIN_PASSWORD` | _(generated)_ | Password for the seeded admin. If unset, a strong one is generated. |
 | `CUBOZOA_TRUST_PROXY_HEADERS` | `false` | Honor `X-Forwarded-*` (only enable behind a trusted reverse proxy). |
+| `CUBOZOA_FFMPEG_PATH` | _(PATH lookup)_ | ffmpeg binary for HLS transcoding; transcoding is disabled if not found. |
+| `CUBOZOA_FFPROBE_PATH` | _(PATH lookup)_ | ffprobe binary for media metadata; scans record titles/years only if not found. |
 
 ## Architecture
 
@@ -88,6 +94,9 @@ internal/
   security            # argon2id hashing, secure tokens, constant-time compare
   store               # storage interface + JSON-backed implementation (swappable)
   auth                # account seeding, credential verification, session lifecycle
+  media               # library scanner, browse service, artwork & stream resolution
+  userdata            # per-user resume position, watched/favorite state
+  transcode           # optional ffprobe (metadata) + ffmpeg (HLS) wrappers
   jellyfin            # Jellyfin wire DTOs + auth-header protocol parsing
   server              # routing, middleware, and the Jellyfin-compatible handlers
 ```
@@ -133,8 +142,9 @@ Highlights enforced in code today:
 - [x] **M4c — Resume & watched state.** Per-user resume position, played status
       and favorites persist across restarts and surface in item DTOs and a
       "Continue Watching" (`/Users/{id}/Items/Resume`) row. *(done)*
-- [ ] **M4b — Transcoding.** HLS transcoding via ffmpeg for formats a client
-      cannot play directly, plus ffprobe-sourced stream metadata.
+- [x] **M4b — Transcoding & metadata.** ffprobe-sourced durations/codecs in
+      browse and `PlaybackInfo`, plus on-demand HLS transcoding via ffmpeg
+      (advertised only when ffmpeg is present). *(done)*
 - [ ] **M5 — Multi-user & sharing.** User management UI, per-library access,
       the Plex-grade onboarding experience.
 

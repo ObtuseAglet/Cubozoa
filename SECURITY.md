@@ -57,6 +57,8 @@ should not merge.
 | Stream requests resolve by item ID to a vetted file in the library root (no client path) | ✅ |
 | Media streaming requires authentication | ✅ |
 | Per-user data endpoints enforce self-or-admin authorization | ✅ |
+| Transcode input resolved server-side; HLS segment names strictly validated | ✅ |
+| ffmpeg/ffprobe run with explicit argv (never a shell); sessions bounded & reaped | ✅ |
 | TLS termination / HTTPS guidance | ⏳ planned |
 | Account lockout / 2FA | ⏳ planned |
 | Audit logging | ⏳ planned |

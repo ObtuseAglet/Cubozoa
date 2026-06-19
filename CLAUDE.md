@@ -27,6 +27,7 @@ internal/store     Store interface + JSON impl; swap for SQL later without touch
 internal/auth      seeding, credential verification, session lifecycle
 internal/media     library scanner + browse service (filesystem -> items)
 internal/userdata  per-user resume position, watched/favorite state
+internal/transcode optional ffprobe (metadata) + ffmpeg (on-demand HLS) wrappers
 internal/jellyfin  wire DTOs + auth-header parsing (the compatibility contract)
 internal/server    routing, middleware, handlers
 ```
@@ -69,5 +70,14 @@ and re-check it lives inside the library root (`withinRoot`) — clients never
 supply a path. Item DTOs and MediaSources deliberately omit the filesystem
 `Path`.
 
-Next is M4b (HLS transcoding via ffmpeg + ffprobe stream metadata). M3b
-(optional external metadata: TMDb/TVDb) is also open.
+M4b (ffprobe metadata during scans + on-demand HLS transcoding via ffmpeg) is
+done: ffmpeg/ffprobe are optional (discovered at startup; features advertised
+only when present). Transcode sessions live under `CUBOZOA_DATA_DIR/transcodes`,
+are reaped when idle and killed on shutdown; segment names are strictly
+validated and the input path is resolved server-side via `media.ItemStream`
+(never client-supplied). Routing note: a `GET` mux pattern also matches `HEAD`,
+so don't register a separate `HEAD` route (it conflicts with literal sibling
+paths like `main.m3u8`).
+
+Open next: M3b (optional external metadata: TMDb/TVDb) and a proper
+Series/Season/Episode hierarchy for TV (episodes are a flat list today).

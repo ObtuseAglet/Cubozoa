@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/server"
 	"github.com/obtuseaglet/cubozoa/internal/store"
+	"github.com/obtuseaglet/cubozoa/internal/transcode"
 	"github.com/obtuseaglet/cubozoa/internal/userdata"
 )
 
@@ -64,10 +66,20 @@ func run(log *slog.Logger) error {
 		announceAdmin(log, cfg.AdminUsername, generated)
 	}
 
+	// Optional media tooling. ffprobe enriches scans with duration/codec
+	// metadata; ffmpeg enables on-demand HLS transcoding. Both are optional —
+	// when absent, direct play still works.
+	mediaSvc := media.NewService(st, log)
+	if prober, ok := transcode.NewProber(cfg.FFprobePath); ok {
+		mediaSvc.SetProber(prober)
+		log.Info("ffprobe available; media will be probed during scans")
+	} else {
+		log.Info("ffprobe not found; scans will record titles/years only")
+	}
+
 	// Libraries: register any present under the configured media directory,
 	// then scan in the background so startup stays fast even for large media
 	// collections. Browse results fill in as scans complete.
-	mediaSvc := media.NewService(st, log)
 	if cfg.MediaDir != "" {
 		if err := mediaSvc.SyncLibrariesFromMediaDir(cfg.MediaDir); err != nil {
 			log.Warn("syncing libraries from media dir", "dir", cfg.MediaDir, "err", err)
@@ -81,6 +93,14 @@ func run(log *slog.Logger) error {
 
 	userDataSvc := userdata.New(st)
 	srv := server.New(cfg, st, authSvc, mediaSvc, userDataSvc, log)
+
+	if mgr, ok := transcode.NewManager(cfg.FFmpegPath, filepath.Join(cfg.DataDir, "transcodes"), log); ok {
+		srv.SetTranscoder(mgr)
+		defer mgr.Close()
+		log.Info("ffmpeg available; HLS transcoding enabled")
+	} else {
+		log.Info("ffmpeg not found; transcoding disabled (direct play only)")
+	}
 
 	httpServer := &http.Server{
 		Addr:    cfg.BindAddress,

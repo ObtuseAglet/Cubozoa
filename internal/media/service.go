@@ -1,6 +1,7 @@
 package media
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"os"
@@ -11,13 +12,15 @@ import (
 	"time"
 
 	"github.com/obtuseaglet/cubozoa/internal/store"
+	"github.com/obtuseaglet/cubozoa/internal/transcode"
 )
 
 // Service manages libraries and serves the queries that back the browse API.
 // It owns scanning so handlers never touch the filesystem directly.
 type Service struct {
-	store store.Store
-	log   *slog.Logger
+	store  store.Store
+	log    *slog.Logger
+	prober *transcode.Prober // optional; nil disables ffprobe metadata
 
 	scanMu sync.Mutex // serializes scans so two refreshes don't race
 }
@@ -25,6 +28,12 @@ type Service struct {
 // NewService constructs a media Service.
 func NewService(st store.Store, log *slog.Logger) *Service {
 	return &Service{store: st, log: log}
+}
+
+// SetProber enables ffprobe metadata extraction during scans. A nil prober
+// leaves scanning metadata-free (titles/years only).
+func (s *Service) SetProber(p *transcode.Prober) {
+	s.prober = p
 }
 
 // SyncLibrariesFromMediaDir registers a library for each immediate subdirectory
@@ -106,15 +115,67 @@ func (s *Service) ScanLibrary(id string) error {
 	if err != nil {
 		return err
 	}
+	if s.prober != nil {
+		s.probeItems(items)
+	}
 	if err := s.store.ReplaceLibraryItems(id, items); err != nil {
 		return err
 	}
 	s.log.Info("scanned library",
 		"name", lib.Name,
 		"items", len(items),
+		"probed", s.prober != nil,
 		"duration_ms", time.Since(start).Milliseconds(),
 	)
 	return nil
+}
+
+// probeItems fills duration/codec/stream metadata for each item using ffprobe,
+// with bounded concurrency so a large library scans in reasonable time without
+// spawning an unbounded number of processes.
+func (s *Service) probeItems(items []*store.MediaItem) {
+	const workers = 4
+	sem := make(chan struct{}, workers)
+	var wg sync.WaitGroup
+	for _, it := range items {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(it *store.MediaItem) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			res, err := s.prober.Probe(context.Background(), it.Path)
+			if err != nil {
+				s.log.Warn("probe failed", "path", it.Path, "err", err)
+				return
+			}
+			applyProbe(it, res)
+		}(it)
+	}
+	wg.Wait()
+}
+
+// applyProbe copies probe results onto a media item.
+func applyProbe(it *store.MediaItem, res *transcode.ProbeResult) {
+	it.RunTimeTicks = res.DurationTicks
+	it.Width = res.Width
+	it.Height = res.Height
+	it.VideoCodec = res.VideoCodec
+	it.AudioCodec = res.AudioCodec
+	it.Bitrate = res.Bitrate
+	it.Streams = make([]store.MediaStreamInfo, 0, len(res.Streams))
+	for _, s := range res.Streams {
+		it.Streams = append(it.Streams, store.MediaStreamInfo{
+			Index:     s.Index,
+			Type:      s.Type,
+			Codec:     s.Codec,
+			Language:  s.Language,
+			Channels:  s.Channels,
+			Width:     s.Width,
+			Height:    s.Height,
+			IsDefault: s.IsDefault,
+			Title:     s.Title,
+		})
+	}
 }
 
 // Libraries returns all registered libraries.

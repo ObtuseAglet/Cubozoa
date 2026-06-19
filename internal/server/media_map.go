@@ -37,6 +37,7 @@ func (s *Server) itemToDto(it *store.MediaItem, ud *store.UserItemData) jellyfin
 		ProductionYear: it.ProductionYear,
 		Container:      it.Container,
 		SortName:       it.SortName,
+		RunTimeTicks:   it.RunTimeTicks,
 		LocationType:   "FileSystem",
 		UserData:       userDataDto(it.ID, ud),
 	}
