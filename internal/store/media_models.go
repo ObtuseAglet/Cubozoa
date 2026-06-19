@@ -51,6 +51,10 @@ type MediaItem struct {
 	Bitrate      int               `json:"bitrate,omitempty"`
 	Streams      []MediaStreamInfo `json:"streams,omitempty"`
 
+	// External sidecar subtitles discovered next to the media file. Paths are
+	// internal; clients fetch them through the subtitle delivery endpoint.
+	Subtitles []SubtitleTrack `json:"subtitles,omitempty"`
+
 	// Local artwork discovered next to the media file. Paths are internal and
 	// never sent to clients; the tags are content fingerprints clients use for
 	// cache-busting on the image endpoints.
@@ -73,6 +77,17 @@ type MediaStreamInfo struct {
 	Height    int    `json:"height,omitempty"`
 	IsDefault bool   `json:"is_default"`
 	Title     string `json:"title,omitempty"`
+}
+
+// SubtitleTrack is an external sidecar subtitle file found next to a media file.
+// The Path is internal; clients receive only a delivery URL.
+type SubtitleTrack struct {
+	Path     string `json:"path"`
+	Language string `json:"language,omitempty"`
+	Codec    string `json:"codec"`  // subrip, ass, ssa, webvtt
+	Format   string `json:"format"` // file extension: srt, ass, ssa, vtt, sub
+	Forced   bool   `json:"forced,omitempty"`
+	Title    string `json:"title,omitempty"`
 }
 
 // UserItemData is per-user, per-item playback state: resume position, play

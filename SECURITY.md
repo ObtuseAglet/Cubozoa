@@ -59,6 +59,7 @@ should not merge.
 | Per-user data endpoints enforce self-or-admin authorization | ✅ |
 | Transcode input resolved server-side; HLS segment names strictly validated | ✅ |
 | ffmpeg/ffprobe run with explicit argv (never a shell); sessions bounded & reaped | ✅ |
+| Subtitle delivery resolves by item ID + ordinal to a vetted file in the library root | ✅ |
 | TLS termination / HTTPS guidance | ⏳ planned |
 | Account lockout / 2FA | ⏳ planned |
 | Audit logging | ⏳ planned |

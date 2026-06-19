@@ -46,6 +46,14 @@ type MediaStream struct {
 	Height    int    `json:"Height,omitempty"`
 	Title     string `json:"Title,omitempty"`
 	IsDefault bool   `json:"IsDefault"`
+	IsForced  bool   `json:"IsForced,omitempty"`
+
+	// Subtitle delivery (external sidecar subtitles).
+	IsExternal           bool   `json:"IsExternal,omitempty"`
+	IsTextSubtitleStream bool   `json:"IsTextSubtitleStream,omitempty"`
+	DeliveryMethod       string `json:"DeliveryMethod,omitempty"`
+	DeliveryURL          string `json:"DeliveryUrl,omitempty"`
+	DisplayTitle         string `json:"DisplayTitle,omitempty"`
 }
 
 // PlaybackProgressInfo is the body clients POST to the playback-reporting

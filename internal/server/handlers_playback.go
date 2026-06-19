@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/obtuseaglet/cubozoa/internal/jellyfin"
@@ -33,7 +34,7 @@ func (s *Server) mediaSource(it *store.MediaItem, token string) jellyfin.MediaSo
 		RunTimeTicks:         it.RunTimeTicks,
 		SupportsDirectPlay:   true,
 		SupportsDirectStream: true,
-		MediaStreams:         mediaStreams(it),
+		MediaStreams:         s.mediaStreams(it, token),
 	}
 	if s.transcoder != nil {
 		src.SupportsTranscoding = true
@@ -44,9 +45,11 @@ func (s *Server) mediaSource(it *store.MediaItem, token string) jellyfin.MediaSo
 	return src
 }
 
-// mediaStreams maps stored stream metadata to the wire DTO.
-func mediaStreams(it *store.MediaItem) []jellyfin.MediaStream {
-	out := make([]jellyfin.MediaStream, 0, len(it.Streams))
+// mediaStreams maps stored stream metadata to the wire DTO, appending external
+// subtitle tracks with their delivery URLs (served as WebVTT). Subtitle stream
+// indexes continue after the probed tracks.
+func (s *Server) mediaStreams(it *store.MediaItem, token string) []jellyfin.MediaStream {
+	out := make([]jellyfin.MediaStream, 0, len(it.Streams)+len(it.Subtitles))
 	for _, st := range it.Streams {
 		out = append(out, jellyfin.MediaStream{
 			Type:      st.Type,
@@ -60,8 +63,27 @@ func mediaStreams(it *store.MediaItem) []jellyfin.MediaStream {
 			IsDefault: st.IsDefault,
 		})
 	}
+	base := len(it.Streams)
+	for i, sub := range it.Subtitles {
+		out = append(out, jellyfin.MediaStream{
+			Type:                 "Subtitle",
+			Index:                base + i,
+			Codec:                sub.Codec,
+			Language:             sub.Language,
+			Title:                sub.Title,
+			DisplayTitle:         sub.Title,
+			IsForced:             sub.Forced,
+			IsExternal:           true,
+			IsTextSubtitleStream: true,
+			DeliveryMethod:       "External",
+			DeliveryURL: "/Videos/" + it.ID + "/Subtitles/" + itoaInt(i) +
+				"/Stream.vtt?api_key=" + url.QueryEscape(token),
+		})
+	}
 	return out
 }
+
+func itoaInt(n int) string { return strconv.Itoa(n) }
 
 // GET|POST /Items/{itemId}/PlaybackInfo — tell the client how it can play an
 // item. The request body (a device profile) is accepted but not yet used for

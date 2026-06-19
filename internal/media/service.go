@@ -310,6 +310,24 @@ func withinRoot(root, p string) bool {
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// ItemSubtitle resolves an external subtitle track by its ordinal, applying the
+// same library-root containment check as media and image serving.
+func (s *Service) ItemSubtitle(itemID string, index int) (store.SubtitleTrack, error) {
+	it, err := s.store.GetItem(itemID)
+	if err != nil {
+		return store.SubtitleTrack{}, err
+	}
+	if index < 0 || index >= len(it.Subtitles) {
+		return store.SubtitleTrack{}, store.ErrNotFound
+	}
+	tr := it.Subtitles[index]
+	if lib, err := s.store.GetLibrary(it.LibraryID); err == nil && !withinRoot(lib.Path, tr.Path) {
+		s.log.Warn("rejecting subtitle outside library root", "item", itemID, "path", tr.Path)
+		return store.SubtitleTrack{}, store.ErrNotFound
+	}
+	return tr, nil
+}
+
 // Stream describes the on-disk source for direct play.
 type Stream struct {
 	Path        string

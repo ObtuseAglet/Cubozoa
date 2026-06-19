@@ -114,6 +114,7 @@ func buildFlat(lib *store.Library, files []scannedFile, lister *dirLister) []*st
 			DateCreated:    f.info.ModTime().UTC(),
 		}
 		applyArtwork(item, lister, f.path)
+		item.Subtitles = findSubtitles(lister, f.path)
 		items = append(items, item)
 	}
 	return items
@@ -183,6 +184,7 @@ func buildEpisodes(lib *store.Library, files []scannedFile, lister *dirLister) [
 			ParentIndexNumber: seasonNum,
 		}
 		applyArtwork(ep, lister, f.path)
+		ep.Subtitles = findSubtitles(lister, f.path)
 		episodes = append(episodes, ep)
 		seasons[seID].ChildCount++
 	}
