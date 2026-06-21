@@ -2,6 +2,8 @@ package transcode
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -79,15 +82,16 @@ func NewManager(path, baseDir string, log *slog.Logger) (*Manager, bool) {
 // ErrUnavailable is returned by operations when transcoding is not configured.
 var ErrUnavailable = errors.New("transcode: ffmpeg unavailable")
 
-// EnsureSession returns the session for id, starting an ffmpeg transcode of
-// inputPath if one is not already running. The session id is supplied by the
-// caller (derived from the item) so repeated playlist requests reuse one
-// transcode rather than spawning duplicates.
-func (m *Manager) EnsureSession(id, inputPath string) (*Session, error) {
+// EnsureSession returns the session for key, starting an ffmpeg transcode of
+// inputPath (beginning at startSeconds into the file) if one is not already
+// running. The key is supplied by the caller and identifies a distinct
+// transcode — typically the item plus its start offset — so the same seek
+// position reuses one transcode while a different one spawns its own.
+func (m *Manager) EnsureSession(key, inputPath string, startSeconds float64) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if sess, ok := m.sessions[id]; ok {
+	if sess, ok := m.sessions[key]; ok {
 		sess.lastAccess = time.Now()
 		return sess, nil
 	}
@@ -95,13 +99,13 @@ func (m *Manager) EnsureSession(id, inputPath string) (*Session, error) {
 		m.evictOldestLocked()
 	}
 
-	dir := filepath.Join(m.baseDir, id)
+	dir := filepath.Join(m.baseDir, sessionDir(key))
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("transcode: session dir: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, m.bin, ffmpegArgs(inputPath, dir)...)
+	cmd := exec.CommandContext(ctx, m.bin, ffmpegArgs(inputPath, dir, startSeconds)...)
 	// Detach from our stdio; ffmpeg is noisy on stderr.
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -111,21 +115,31 @@ func (m *Manager) EnsureSession(id, inputPath string) (*Session, error) {
 		return nil, fmt.Errorf("transcode: starting ffmpeg: %w", err)
 	}
 
-	sess := &Session{ID: id, Dir: dir, cancel: cancel, lastAccess: time.Now()}
-	m.sessions[id] = sess
-	m.log.Info("transcode session started", "id", id)
+	sess := &Session{ID: key, Dir: dir, cancel: cancel, lastAccess: time.Now()}
+	m.sessions[key] = sess
+	m.log.Info("transcode session started", "key", key, "start_seconds", startSeconds)
 
 	// Reap process state when ffmpeg exits so it does not linger as a zombie.
 	go func() { _ = cmd.Wait() }()
 	return sess, nil
 }
 
+// sessionDir maps an arbitrary session key to a safe directory name.
+func sessionDir(key string) string {
+	sum := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(sum[:16])
+}
+
 // ffmpegArgs builds the ffmpeg command line for an on-demand HLS transcode to
 // H.264/AAC in MPEG-TS segments. A VOD playlist with unlimited list size is
-// written incrementally as segments complete.
-func ffmpegArgs(input, dir string) []string {
-	return []string{
-		"-nostdin",
+// written incrementally as segments complete. When startSeconds > 0 the input
+// is seeked before decoding (fast keyframe seek) so playback can begin mid-file.
+func ffmpegArgs(input, dir string, startSeconds float64) []string {
+	args := []string{"-nostdin"}
+	if startSeconds > 0 {
+		args = append(args, "-ss", strconv.FormatFloat(startSeconds, 'f', 3, 64))
+	}
+	args = append(args,
 		"-i", input,
 		"-map", "0:v:0",
 		"-map", "0:a:0?",
@@ -139,13 +153,14 @@ func ffmpegArgs(input, dir string) []string {
 		"-hls_flags", "independent_segments+temp_file",
 		"-hls_segment_filename", filepath.Join(dir, segmentGlob),
 		filepath.Join(dir, playlistName),
-	}
+	)
+	return args
 }
 
 // Playlist returns the raw HLS media playlist for a session, waiting briefly for
 // ffmpeg to produce it on first request.
-func (m *Manager) Playlist(id string) ([]byte, error) {
-	sess, ok := m.get(id)
+func (m *Manager) Playlist(key string) ([]byte, error) {
+	sess, ok := m.get(key)
 	if !ok {
 		return nil, ErrUnavailable
 	}
@@ -164,11 +179,11 @@ func (m *Manager) Playlist(id string) ([]byte, error) {
 
 // Segment resolves and validates a segment path within a session, waiting
 // briefly if a client races slightly ahead of the encoder.
-func (m *Manager) Segment(id, name string) (string, error) {
+func (m *Manager) Segment(key, name string) (string, error) {
 	if !segmentName.MatchString(name) {
 		return "", fmt.Errorf("transcode: invalid segment name")
 	}
-	sess, ok := m.get(id)
+	sess, ok := m.get(key)
 	if !ok {
 		return "", ErrUnavailable
 	}
@@ -185,10 +200,10 @@ func (m *Manager) Segment(id, name string) (string, error) {
 	}
 }
 
-func (m *Manager) get(id string) (*Session, bool) {
+func (m *Manager) get(key string) (*Session, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	sess, ok := m.sessions[id]
+	sess, ok := m.sessions[key]
 	if ok {
 		sess.lastAccess = time.Now()
 	}

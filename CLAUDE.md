@@ -74,9 +74,10 @@ supply a path. Item DTOs and MediaSources deliberately omit the filesystem
 M4b (ffprobe metadata during scans + on-demand HLS transcoding via ffmpeg) is
 done: ffmpeg/ffprobe are optional (discovered at startup; features advertised
 only when present). Transcode sessions live under `CUBOZOA_DATA_DIR/transcodes`,
-are reaped when idle and killed on shutdown; segment names are strictly
-validated and the input path is resolved server-side via `media.ItemStream`
-(never client-supplied). Routing note: a `GET` mux pattern also matches `HEAD`,
+keyed by item + seek offset (`StartTimeTicks` seeks via `-ss`, so seeking starts
+its own session), are reaped when idle and killed on shutdown; segment names are
+strictly validated and the input path is resolved server-side via
+`media.ItemStream` (never client-supplied). Routing note: a `GET` mux pattern also matches `HEAD`,
 so don't register a separate `HEAD` route (it conflicts with literal sibling
 paths like `main.m3u8`).
 
@@ -115,4 +116,4 @@ recovery-code hashes live on the user record (`internal/security/totp.go`,
 6-digit code is appended to the password and `auth.verifyCredentials` splits it.
 Recovery codes are single-use; disable requires a current code.
 
-Open next: seek-aware/adaptive transcoding, a SQL store backend.
+Open next: adaptive (multi-bitrate) transcoding, a SQL store backend.

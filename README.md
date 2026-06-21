@@ -217,8 +217,8 @@ interoperates with standard authenticator apps.
       Jellyfin clients (append the 6-digit code to your password), with
       authenticator-app enrollment and single-use recovery codes. *(done)*
 - [x] **M4b — Transcoding & metadata.** ffprobe-sourced durations/codecs in
-      browse and `PlaybackInfo`, plus on-demand HLS transcoding via ffmpeg
-      (advertised only when ffmpeg is present). *(done)*
+      browse and `PlaybackInfo`, plus on-demand, **seek-aware** HLS transcoding
+      via ffmpeg (advertised only when ffmpeg is present). *(done)*
 - [ ] **M5 — Multi-user & sharing.** User management UI, per-library access,
       the Plex-grade onboarding experience.
 

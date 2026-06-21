@@ -87,7 +87,7 @@ func TestHLSSessionProducesPlaylistAndSegments(t *testing.T) {
 	defer mgr.Close()
 
 	const id = "test-session-1"
-	if _, err := mgr.EnsureSession(id, video); err != nil {
+	if _, err := mgr.EnsureSession(id, video, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,7 +124,7 @@ func TestHLSSessionProducesPlaylistAndSegments(t *testing.T) {
 	}
 
 	// Reusing the id returns the same session, not a new one.
-	if _, err := mgr.EnsureSession(id, video); err != nil {
+	if _, err := mgr.EnsureSession(id, video, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -136,7 +136,7 @@ func TestSegmentNameValidation(t *testing.T) {
 		t.Skip("ffmpeg not available")
 	}
 	defer mgr.Close()
-	mgr.EnsureSession("s1", video)
+	mgr.EnsureSession("s1", video, 0)
 
 	for _, bad := range []string{"../../etc/passwd", "seg0.mp4", "index.m3u8", "seg.ts", "../seg00000.ts"} {
 		if _, err := mgr.Segment("s1", bad); err == nil {

@@ -21,7 +21,7 @@ import (
 
 func TestRewritePlaylist(t *testing.T) {
 	in := "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg00000.ts\n#EXTINF:4.0,\nseg00001.ts\n#EXT-X-ENDLIST\n"
-	out := string(rewritePlaylist([]byte(in), "item123", "tok&en"))
+	out := string(rewritePlaylist([]byte(in), "tok&en", 0))
 
 	// Tag lines are preserved.
 	if !strings.Contains(out, "#EXT-X-ENDLIST") || !strings.Contains(out, "#EXTINF:6.0,") {
@@ -179,6 +179,49 @@ func TestHlsPlaylistAndSegmentServed(t *testing.T) {
 	b, _ := io.ReadAll(resp.Body)
 	if len(b) == 0 {
 		t.Fatal("empty segment")
+	}
+}
+
+func TestHlsSeekPlaylistAndSegment(t *testing.T) {
+	ts, token, itemID := newTranscodeServer(t)
+
+	// Request the playlist with a seek offset (1s = 10,000,000 ticks).
+	url := ts.URL + "/Videos/" + itemID + "/main.m3u8?StartTimeTicks=10000000&api_key=" + token
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("seek playlist status = %d", resp.StatusCode)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	playlist := string(b)
+
+	// Segment URIs must carry the start offset so they route to the seek session.
+	var seg string
+	for _, line := range strings.Split(playlist, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "hls/") {
+			seg = line
+			break
+		}
+	}
+	if seg == "" || !strings.Contains(seg, "StartTimeTicks=10000000") {
+		t.Fatalf("seek not propagated to segment URI:\n%s", playlist)
+	}
+
+	// And the seeked segment is served.
+	sresp, err := http.Get(ts.URL + "/Videos/" + itemID + "/" + seg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sresp.Body.Close()
+	if sresp.StatusCode != http.StatusOK {
+		t.Fatalf("seek segment status = %d", sresp.StatusCode)
+	}
+	if ct := sresp.Header.Get("Content-Type"); ct != "video/mp2t" {
+		t.Fatalf("seek segment content-type = %q", ct)
 	}
 }
 
