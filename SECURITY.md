@@ -64,4 +64,4 @@ should not merge.
 | Direct HTTPS serving (TLS 1.2+ floor) with HSTS over TLS | ✅ |
 | Account lockout after repeated failed logins (generic 401, no enumeration) | ✅ |
 | Structured audit logging of auth events (no secrets) | ✅ |
-| Two-factor authentication | ⏳ planned |
+| Two-factor authentication (TOTP) with single-use recovery codes | ✅ |

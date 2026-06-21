@@ -105,4 +105,12 @@ MusicAlbum folder items plus Audio tracks (parsed from `Artist/Album/NN Title`
 in `media/naming.go` `parseTrack`); browse is parent-based and `/Artists` lists
 artists. Movies stay flat; tvshows use the Series/Season/Episode tree.
 
-Open next: seek-aware/adaptive transcoding, embedded-subtitle extraction, 2FA.
+Two-factor auth (TOTP, RFC 6238) is done: opt-in per account via Cubozoa-native
+`/Cubozoa/2FA/{Setup,Activate,Status,Disable,Recover}` endpoints; secret +
+recovery-code hashes live on the user record (`internal/security/totp.go`,
+`internal/auth/totp.go`). Compatible with stock clients — when enabled, the
+6-digit code is appended to the password and `auth.verifyCredentials` splits it.
+Recovery codes are single-use; disable requires a current code.
+
+Open next: seek-aware/adaptive transcoding, embedded-subtitle extraction, a SQL
+store backend.

@@ -36,4 +36,7 @@ const (
 	LoginFailure  = "auth.login.failure"
 	AccountLocked = "auth.account.locked"
 	Logout        = "auth.logout"
+	TwoFAEnabled  = "auth.2fa.enabled"
+	TwoFADisabled = "auth.2fa.disabled"
+	TwoFARecover  = "auth.2fa.recovered"
 )

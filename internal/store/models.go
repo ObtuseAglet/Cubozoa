@@ -17,6 +17,14 @@ type User struct {
 	// is crossed, the time until which the account is locked.
 	FailedLoginAttempts int       `json:"failed_login_attempts,omitempty"`
 	LockedUntil         time.Time `json:"locked_until,omitempty"`
+
+	// Two-factor authentication (TOTP). TOTPSecret is the active shared secret;
+	// PendingTOTPSecret holds a not-yet-confirmed secret during enrollment.
+	// RecoveryCodeHashes are SHA-256 hashes of single-use recovery codes.
+	TOTPEnabled        bool     `json:"totp_enabled,omitempty"`
+	TOTPSecret         string   `json:"totp_secret,omitempty"`
+	PendingTOTPSecret  string   `json:"pending_totp_secret,omitempty"`
+	RecoveryCodeHashes []string `json:"recovery_code_hashes,omitempty"`
 }
 
 // Session is an authenticated client session. The access token is never stored

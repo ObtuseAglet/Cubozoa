@@ -155,6 +155,27 @@ Highlights enforced in code today:
   conservative security headers, panic recovery, spoof-resistant client-IP
   handling.
 
+### Two-factor authentication (TOTP)
+
+2FA is opt-in per account and works with **unmodified Jellyfin clients** — they
+only have a password field, so once enabled you simply append your current
+6-digit code to your password when logging in (e.g. `mypassword123456`).
+
+Enrollment and recovery use Cubozoa-native endpoints (authenticate first to get
+a token):
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /Cubozoa/2FA/Setup` | Returns a `Secret` and an `otpauth://` URI to add to an authenticator app. |
+| `POST /Cubozoa/2FA/Activate` `{"Code":"123456"}` | Confirms the secret and returns one-time **recovery codes** (shown once). |
+| `GET /Cubozoa/2FA/Status` | Whether 2FA is enabled for the caller. |
+| `POST /Cubozoa/2FA/Disable` `{"Code":"123456"}` | Turns 2FA off (requires a current code, so a stolen session can't). |
+| `POST /Cubozoa/2FA/Recover` `{"Username","Pw","RecoveryCode"}` | Unauthenticated lost-device recovery: password + a recovery code disables 2FA. |
+
+Secrets and recovery-code hashes are stored at rest; recovery codes are
+single-use. The implementation is RFC 6238 (SHA-1, 6 digits, 30 s) and
+interoperates with standard authenticator apps.
+
 ## Roadmap
 
 - [x] **M1 — Client handshake & login.** Discovery, branding, full
@@ -191,6 +212,9 @@ Highlights enforced in code today:
 - [x] **Packaging.** Multi-stage Docker image (ffmpeg bundled, non-root),
       Compose example, and a tagged-release workflow publishing static
       cross-platform binaries + a multi-arch image. *(done)*
+- [x] **Two-factor auth (TOTP).** Opt-in per account, compatible with stock
+      Jellyfin clients (append the 6-digit code to your password), with
+      authenticator-app enrollment and single-use recovery codes. *(done)*
 - [x] **M4b — Transcoding & metadata.** ffprobe-sourced durations/codecs in
       browse and `PlaybackInfo`, plus on-demand HLS transcoding via ffmpeg
       (advertised only when ffmpeg is present). *(done)*

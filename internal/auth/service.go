@@ -150,8 +150,7 @@ func (s *Service) Authenticate(username, password string) (*store.User, error) {
 		return nil, ErrAccountLocked
 	}
 
-	ok, err := security.VerifyPassword(password, u.PasswordHash)
-	if err != nil || !ok {
+	if !s.verifyCredentials(u, password) {
 		s.recordFailure(u)
 		if s.isLocked(u) {
 			return nil, ErrAccountLocked
@@ -167,6 +166,38 @@ func (s *Service) Authenticate(username, password string) (*store.User, error) {
 		s.log.Warn("failed to update user on login", "user", u.ID, "err", err)
 	}
 	return u, nil
+}
+
+// verifyCredentials checks a user's password and, when two-factor is enabled,
+// the appended TOTP code. For 2FA accounts the supplied secret is
+// "<password><6-digit code>": the trailing six digits are the TOTP, the rest is
+// the password. This keeps login working with unmodified Jellyfin clients,
+// which only offer a password field.
+func (s *Service) verifyCredentials(u *store.User, password string) bool {
+	if !u.TOTPEnabled {
+		ok, err := security.VerifyPassword(password, u.PasswordHash)
+		return err == nil && ok
+	}
+	if len(password) <= 6 {
+		return false
+	}
+	base, code := password[:len(password)-6], password[len(password)-6:]
+	if !allDigits(code) {
+		return false
+	}
+	if ok, err := security.VerifyPassword(base, u.PasswordHash); err != nil || !ok {
+		return false
+	}
+	return security.VerifyTOTP(u.TOTPSecret, code)
+}
+
+func allDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return len(s) > 0
 }
 
 // isLocked reports whether the account is currently within a lockout window.

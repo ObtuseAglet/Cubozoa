@@ -85,6 +85,13 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /DisplayPreferences/{id}", s.requireAuth(s.handleGetDisplayPreferences))
 	mux.HandleFunc("POST /DisplayPreferences/{id}", s.requireAuth(s.handleUpdateDisplayPreferences))
 
+	// --- Two-factor authentication (Cubozoa-native) ---
+	mux.HandleFunc("GET /Cubozoa/2FA/Status", s.requireAuth(s.handle2FAStatus))
+	mux.HandleFunc("POST /Cubozoa/2FA/Setup", s.requireAuth(s.handle2FASetup))
+	mux.HandleFunc("POST /Cubozoa/2FA/Activate", s.requireAuth(s.handle2FAActivate))
+	mux.HandleFunc("POST /Cubozoa/2FA/Disable", s.requireAuth(s.handle2FADisable))
+	mux.HandleFunc("POST /Cubozoa/2FA/Recover", s.handle2FARecover) // anonymous
+
 	// --- Sessions (authenticated) ---
 	mux.HandleFunc("POST /Sessions/Logout", s.requireAuth(s.handleLogout))
 	mux.HandleFunc("POST /Sessions/Capabilities/Full", s.requireAuth(s.handleSessionCapabilities))
