@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/obtuseaglet/cubozoa/internal/jellyfin"
+	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/security"
 	"github.com/obtuseaglet/cubozoa/internal/store"
 )
@@ -51,7 +52,7 @@ func (s *Server) mediaSource(it *store.MediaItem, token string) jellyfin.MediaSo
 func (s *Server) mediaStreams(it *store.MediaItem, token string) []jellyfin.MediaStream {
 	out := make([]jellyfin.MediaStream, 0, len(it.Streams)+len(it.Subtitles))
 	for _, st := range it.Streams {
-		out = append(out, jellyfin.MediaStream{
+		ms := jellyfin.MediaStream{
 			Type:      st.Type,
 			Index:     st.Index,
 			Codec:     st.Codec,
@@ -61,7 +62,16 @@ func (s *Server) mediaStreams(it *store.MediaItem, token string) []jellyfin.Medi
 			Height:    st.Height,
 			Title:     st.Title,
 			IsDefault: st.IsDefault,
-		})
+		}
+		// Embedded text subtitle tracks become deliverable (extracted to WebVTT)
+		// when ffmpeg is available.
+		if st.Type == "Subtitle" && s.transcoder != nil && media.IsTextSubtitleCodec(st.Codec) {
+			ms.IsTextSubtitleStream = true
+			ms.DeliveryMethod = "External"
+			ms.DeliveryURL = "/Videos/" + it.ID + "/Subtitles/embedded/" + itoaInt(st.Index) +
+				"/Stream.vtt?api_key=" + url.QueryEscape(token)
+		}
+		out = append(out, ms)
 	}
 	base := len(it.Streams)
 	for i, sub := range it.Subtitles {

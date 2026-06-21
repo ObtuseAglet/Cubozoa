@@ -59,7 +59,7 @@ should not merge.
 | Per-user data endpoints enforce self-or-admin authorization | ✅ |
 | Transcode input resolved server-side; HLS segment names strictly validated | ✅ |
 | ffmpeg/ffprobe run with explicit argv (never a shell); sessions bounded & reaped | ✅ |
-| Subtitle delivery resolves by item ID + ordinal to a vetted file in the library root | ✅ |
+| Subtitle delivery (sidecar + embedded) resolves by item ID to a vetted file; ffmpeg runs with explicit argv | ✅ |
 | Downloaded metadata artwork is size-capped and served only from the vetted cache dir | ✅ |
 | Direct HTTPS serving (TLS 1.2+ floor) with HSTS over TLS | ✅ |
 | Account lockout after repeated failed logins (generic 401, no enumeration) | ✅ |

@@ -88,7 +88,10 @@ client's series pages. Movies/other libraries stay flat.
 
 Subtitles (external sidecars discovered during scan, advertised as external
 MediaStreams, delivered via `/Videos/{id}/Subtitles/{index}/{file}` with
-on-the-fly SubRip→WebVTT conversion) and M3b (optional TMDb enrichment:
+on-the-fly SubRip→WebVTT conversion; embedded *text* subtitle tracks are also
+advertised when ffmpeg is present and extracted to WebVTT on demand via
+`/Videos/{id}/Subtitles/embedded/{streamIndex}/{file}`) and M3b (optional TMDb
+enrichment:
 overview/rating/genres + downloaded artwork cached under
 `CUBOZOA_DATA_DIR/metadata-images`, which `media.ItemImage` is allowed to serve
 in addition to the library root) are done. The metadata provider is opt-in via
@@ -112,5 +115,4 @@ recovery-code hashes live on the user record (`internal/security/totp.go`,
 6-digit code is appended to the password and `auth.verifyCredentials` splits it.
 Recovery codes are single-use; disable requires a current code.
 
-Open next: seek-aware/adaptive transcoding, embedded-subtitle extraction, a SQL
-store backend.
+Open next: seek-aware/adaptive transcoding, a SQL store backend.

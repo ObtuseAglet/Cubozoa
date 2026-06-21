@@ -60,6 +60,40 @@ func (s *Server) handleSubtitle(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+// GET /Videos/{id}/Subtitles/embedded/{index}/{file} — extract an embedded text
+// subtitle stream (by ffprobe stream index) and deliver it as WebVTT. Requires
+// ffmpeg; the source file is resolved server-side from the item ID.
+func (s *Server) handleEmbeddedSubtitle(w http.ResponseWriter, r *http.Request) {
+	if s.transcoder == nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	id := r.PathValue("id")
+	index, err := strconv.Atoi(r.PathValue("index"))
+	if err != nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+
+	input, err := s.media.EmbeddedSubtitleInput(id, index)
+	if err != nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+
+	data, err := s.transcoder.ExtractSubtitle(r.Context(), input, index)
+	if err != nil {
+		s.log.Warn("extracting embedded subtitle", "item", id, "index", index, "err", err)
+		s.writeError(w, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
 func subtitleContentType(format string) string {
 	switch strings.ToLower(format) {
 	case "vtt":

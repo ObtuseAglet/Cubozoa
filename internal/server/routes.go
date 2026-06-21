@@ -67,6 +67,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /Videos/{id}/master.m3u8", s.requireAuth(s.handleHlsPlaylist))
 	mux.HandleFunc("GET /Videos/{id}/hls/{seg}", s.requireAuth(s.handleHlsSegment))
 	mux.HandleFunc("GET /Videos/{id}/Subtitles/{index}/{file}", s.requireAuth(s.handleSubtitle))
+	mux.HandleFunc("GET /Videos/{id}/Subtitles/embedded/{index}/{file}", s.requireAuth(s.handleEmbeddedSubtitle))
 	mux.HandleFunc("GET /Videos/{id}/{file}", s.requireAuth(s.handleVideoStream))
 	mux.HandleFunc("POST /Sessions/Playing", s.requireAuth(s.handlePlaybackReport))
 	mux.HandleFunc("POST /Sessions/Playing/Progress", s.requireAuth(s.handlePlaybackReport))

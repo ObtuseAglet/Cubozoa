@@ -193,7 +193,8 @@ interoperates with standard authenticator apps.
       series with overviews, ratings, genres and artwork (downloaded and cached)
       when a key is configured. *(done)*
 - [x] **Subtitles.** External sidecar subtitles are discovered and delivered,
-      with on-the-fly SubRip→WebVTT conversion. *(done)*
+      and embedded text subtitle tracks are extracted on demand — both delivered
+      as WebVTT. *(done)*
 - [x] **M4 — Direct-play playback.** `PlaybackInfo` negotiation and raw media
       streaming via `/Videos/{id}/stream` with HTTP Range (seek) support, plus
       playback progress reporting. *(done)*
