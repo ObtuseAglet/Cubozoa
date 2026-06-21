@@ -1,0 +1,29 @@
+# Example Cubozoa deployment.
+#
+#   docker compose up -d
+#
+# Point `media` at your library root (each top-level folder — Movies, TV Shows,
+# Music — becomes a library). On first run the generated admin password is
+# printed to the logs: `docker compose logs cubozoa`.
+
+services:
+  cubozoa:
+    build: .
+    # Or, once published:  image: ghcr.io/obtuseaglet/cubozoa:latest
+    container_name: cubozoa
+    ports:
+      - "8096:8096"
+    environment:
+      CUBOZOA_SERVER_NAME: "Cubozoa"
+      # Set a known admin password instead of the generated one:
+      # CUBOZOA_ADMIN_PASSWORD: "change-me-please"
+      # Enable TMDb enrichment:
+      # CUBOZOA_TMDB_API_KEY: "your-tmdb-key"
+    volumes:
+      - cubozoa-data:/data
+      # Media is mounted read-only — Cubozoa never writes to your library.
+      - /path/to/your/media:/media:ro
+    restart: unless-stopped
+
+volumes:
+  cubozoa-data:

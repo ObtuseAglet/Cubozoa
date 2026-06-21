@@ -68,6 +68,31 @@ On first run with no configured password, Cubozoa creates an `admin` account and
 prints a generated password **once** — capture it. Then point any Jellyfin
 client at `http://<host>:8096`.
 
+### Run with Docker
+
+The image bundles ffmpeg/ffprobe, runs as an unprivileged user, and mounts your
+media read-only:
+
+```bash
+docker run -d --name cubozoa \
+  -p 8096:8096 \
+  -v cubozoa-data:/data \
+  -v /path/to/media:/media:ro \
+  ghcr.io/obtuseaglet/cubozoa:latest
+# grab the generated admin password:
+docker logs cubozoa
+```
+
+Or with Compose — copy `docker-compose.yml`, point the `media` volume at your
+library root, and `docker compose up -d`.
+
+### Prebuilt binaries
+
+Tagged releases publish static, dependency-free binaries for linux, macOS and
+Windows (amd64/arm64) plus `SHA256SUMS`. Download one, mark it executable, and
+run it — no runtime to install. (For transcoding, have `ffmpeg` on `PATH` or set
+`CUBOZOA_FFMPEG_PATH`.) Build them yourself with `make dist`.
+
 ### Configuration
 
 All configuration is via environment variables; every one has a safe default.
@@ -163,6 +188,9 @@ Highlights enforced in code today:
       layout, with an `/Artists` endpoint. *(done)*
 - [x] **Edge hardening.** Direct HTTPS (TLS 1.2+) with HSTS, persistent account
       lockout (no user enumeration), and structured audit logging. *(done)*
+- [x] **Packaging.** Multi-stage Docker image (ffmpeg bundled, non-root),
+      Compose example, and a tagged-release workflow publishing static
+      cross-platform binaries + a multi-arch image. *(done)*
 - [x] **M4b — Transcoding & metadata.** ffprobe-sourced durations/codecs in
       browse and `PlaybackInfo`, plus on-demand HLS transcoding via ffmpeg
       (advertised only when ffmpeg is present). *(done)*
