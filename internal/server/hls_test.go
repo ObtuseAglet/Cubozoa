@@ -21,7 +21,7 @@ import (
 
 func TestRewritePlaylist(t *testing.T) {
 	in := "#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXTINF:6.0,\nseg00000.ts\n#EXTINF:4.0,\nseg00001.ts\n#EXT-X-ENDLIST\n"
-	out := string(rewritePlaylist([]byte(in), "tok&en", 0))
+	out := string(rewriteSegments([]byte(in), "hls/", "tok&en", 0))
 
 	// Tag lines are preserved.
 	if !strings.Contains(out, "#EXT-X-ENDLIST") || !strings.Contains(out, "#EXTINF:6.0,") {

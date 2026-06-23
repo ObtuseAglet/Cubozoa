@@ -63,9 +63,11 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /Items/{itemId}/PlaybackInfo", s.requireAuth(s.handlePlaybackInfo))
 	// A GET pattern also matches HEAD in net/http's mux, so HEAD streaming and
 	// image probes work without a separate (and here, conflicting) registration.
+	mux.HandleFunc("GET /Videos/{id}/master.m3u8", s.requireAuth(s.handleHlsMaster))
 	mux.HandleFunc("GET /Videos/{id}/main.m3u8", s.requireAuth(s.handleHlsPlaylist))
-	mux.HandleFunc("GET /Videos/{id}/master.m3u8", s.requireAuth(s.handleHlsPlaylist))
 	mux.HandleFunc("GET /Videos/{id}/hls/{seg}", s.requireAuth(s.handleHlsSegment))
+	mux.HandleFunc("GET /Videos/{id}/hls/{quality}/main.m3u8", s.requireAuth(s.handleHlsVariant))
+	mux.HandleFunc("GET /Videos/{id}/hls/{quality}/{seg}", s.requireAuth(s.handleHlsVariantSegment))
 	mux.HandleFunc("GET /Videos/{id}/Subtitles/{index}/{file}", s.requireAuth(s.handleSubtitle))
 	mux.HandleFunc("GET /Videos/{id}/Subtitles/embedded/{index}/{file}", s.requireAuth(s.handleEmbeddedSubtitle))
 	mux.HandleFunc("GET /Videos/{id}/{file}", s.requireAuth(s.handleVideoStream))

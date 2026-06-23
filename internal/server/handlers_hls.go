@@ -1,11 +1,14 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/obtuseaglet/cubozoa/internal/transcode"
 )
 
 // hlsStartTicks reads the seek offset (Jellyfin's StartTimeTicks, in 100ns
@@ -23,19 +26,110 @@ func hlsStartTicks(r *http.Request) int64 {
 	return n
 }
 
-// hlsSessionKey identifies a transcode by item plus seek offset, so seeking to a
-// new position starts its own transcode rather than colliding with the original.
-func hlsSessionKey(itemID string, startTicks int64) string {
-	return itemID + ":" + strconv.FormatInt(startTicks, 10)
+// hlsSessionKey identifies a transcode by item, seek offset and rendition, so
+// each seek position and each quality level gets its own transcode.
+func hlsSessionKey(itemID string, startTicks int64, quality string) string {
+	return itemID + ":" + strconv.FormatInt(startTicks, 10) + ":" + quality
 }
 
-// GET /Videos/{id}/main.m3u8 (and master.m3u8) — start (or join) an HLS
-// transcode of an item and return its media playlist. An optional
-// StartTimeTicks seeks the transcode so playback can begin mid-file.
-//
-// ffmpeg's playlist lists bare segment names; we rewrite each to an absolute
-// path under this item's segment endpoint, carrying the api_key (so segment
-// requests authenticate) and the start offset (so they route to this session).
+// ticksToSeconds converts Jellyfin 100ns ticks to seconds.
+func ticksToSeconds(ticks int64) float64 { return float64(ticks) / 1e7 }
+
+// GET /Videos/{id}/master.m3u8 — the adaptive (ABR) master playlist. It lists a
+// variant stream per quality rung derived from the source resolution; an
+// ABR-capable client picks one based on bandwidth.
+func (s *Server) handleHlsMaster(w http.ResponseWriter, r *http.Request) {
+	if s.transcoder == nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	id := r.PathValue("id")
+	it, err := s.media.Item(id)
+	if err != nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+
+	startTicks := hlsStartTicks(r)
+	token := clientAuthFrom(r).Token
+	renditions := transcode.SelectRenditions(it.Width, it.Height, it.Bitrate)
+
+	var b strings.Builder
+	b.WriteString("#EXTM3U\n#EXT-X-VERSION:3\n")
+	for _, rd := range renditions {
+		if rd.Width > 0 && rd.Height > 0 {
+			fmt.Fprintf(&b, "#EXT-X-STREAM-INF:BANDWIDTH=%d,RESOLUTION=%dx%d\n", rd.Bandwidth, rd.Width, rd.Height)
+		} else {
+			fmt.Fprintf(&b, "#EXT-X-STREAM-INF:BANDWIDTH=%d\n", rd.Bandwidth)
+		}
+		q := "?api_key=" + url.QueryEscape(token)
+		if startTicks > 0 {
+			q += "&StartTimeTicks=" + strconv.FormatInt(startTicks, 10)
+		}
+		fmt.Fprintf(&b, "hls/%s/main.m3u8%s\n", url.PathEscape(rd.Name), q)
+	}
+
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(b.String()))
+}
+
+// GET /Videos/{id}/hls/{quality}/main.m3u8 — the media playlist for one ABR
+// rendition. Segment URIs are relative, so they resolve under this rendition's
+// own segment path.
+func (s *Server) handleHlsVariant(w http.ResponseWriter, r *http.Request) {
+	if s.transcoder == nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	id := r.PathValue("id")
+	quality := r.PathValue("quality")
+	startTicks := hlsStartTicks(r)
+
+	it, err := s.media.Item(id)
+	if err != nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	rd, ok := findRendition(transcode.SelectRenditions(it.Width, it.Height, it.Bitrate), quality)
+	if !ok {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+
+	st, err := s.media.ItemStream(id)
+	if err != nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	key := hlsSessionKey(id, startTicks, quality)
+	if _, err := s.transcoder.EnsureSession(key, st.Path, ticksToSeconds(startTicks), rd); err != nil {
+		s.log.Error("starting transcode", "item", id, "quality", quality, "err", err)
+		s.writeError(w, http.StatusInternalServerError)
+		return
+	}
+	playlist, err := s.transcoder.Playlist(key)
+	if err != nil {
+		s.writeError(w, http.StatusServiceUnavailable)
+		return
+	}
+	// Relative segment URIs resolve under /Videos/{id}/hls/{quality}/.
+	s.writePlaylist(w, rewriteSegments(playlist, "", clientAuthFrom(r).Token, startTicks))
+}
+
+// GET /Videos/{id}/hls/{quality}/{seg} — a segment of an ABR rendition.
+func (s *Server) handleHlsVariantSegment(w http.ResponseWriter, r *http.Request) {
+	if s.transcoder == nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	key := hlsSessionKey(r.PathValue("id"), hlsStartTicks(r), r.PathValue("quality"))
+	s.serveSegment(w, r, key, r.PathValue("seg"))
+}
+
+// GET /Videos/{id}/main.m3u8 — single-stream media playlist (auto rendition),
+// kept for non-ABR clients. Segment URIs point at /Videos/{id}/hls/{seg}.
 func (s *Server) handleHlsPlaylist(w http.ResponseWriter, r *http.Request) {
 	if s.transcoder == nil {
 		s.writeError(w, http.StatusNotFound)
@@ -43,51 +137,58 @@ func (s *Server) handleHlsPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 	id := r.PathValue("id")
 	startTicks := hlsStartTicks(r)
-	key := hlsSessionKey(id, startTicks)
+	key := hlsSessionKey(id, startTicks, transcode.AutoRendition.Name)
 
 	st, err := s.media.ItemStream(id)
 	if err != nil {
 		s.writeError(w, http.StatusNotFound)
 		return
 	}
-
-	if _, err := s.transcoder.EnsureSession(key, st.Path, ticksToSeconds(startTicks)); err != nil {
+	if _, err := s.transcoder.EnsureSession(key, st.Path, ticksToSeconds(startTicks), transcode.AutoRendition); err != nil {
 		s.log.Error("starting transcode", "item", id, "err", err)
 		s.writeError(w, http.StatusInternalServerError)
 		return
 	}
-
 	playlist, err := s.transcoder.Playlist(key)
 	if err != nil {
-		s.log.Warn("transcode playlist not ready", "item", id, "err", err)
 		s.writeError(w, http.StatusServiceUnavailable)
 		return
 	}
-
-	rewritten := rewritePlaylist(playlist, clientAuthFrom(r).Token, startTicks)
-
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(rewritten)
+	s.writePlaylist(w, rewriteSegments(playlist, "hls/", clientAuthFrom(r).Token, startTicks))
 }
 
-// GET /Videos/{id}/hls/{seg} — serve a single transcoded segment.
+// GET /Videos/{id}/hls/{seg} — a segment of the single (auto) stream.
 func (s *Server) handleHlsSegment(w http.ResponseWriter, r *http.Request) {
 	if s.transcoder == nil {
 		s.writeError(w, http.StatusNotFound)
 		return
 	}
-	id := r.PathValue("id")
-	seg := r.PathValue("seg")
-	key := hlsSessionKey(id, hlsStartTicks(r))
+	key := hlsSessionKey(r.PathValue("id"), hlsStartTicks(r), transcode.AutoRendition.Name)
+	s.serveSegment(w, r, key, r.PathValue("seg"))
+}
 
-	path, err := s.transcoder.Segment(key, seg)
+func findRendition(rs []transcode.Rendition, name string) (transcode.Rendition, bool) {
+	for _, rd := range rs {
+		if rd.Name == name {
+			return rd, true
+		}
+	}
+	return transcode.Rendition{}, false
+}
+
+func (s *Server) writePlaylist(w http.ResponseWriter, data []byte) {
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(data)
+}
+
+func (s *Server) serveSegment(w http.ResponseWriter, r *http.Request, sessionKey, seg string) {
+	path, err := s.transcoder.Segment(sessionKey, seg)
 	if err != nil {
 		s.writeError(w, http.StatusNotFound)
 		return
 	}
-
 	f, err := os.Open(path)
 	if err != nil {
 		s.writeError(w, http.StatusNotFound)
@@ -99,19 +200,16 @@ func (s *Server) handleHlsSegment(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusNotFound)
 		return
 	}
-
 	w.Header().Set("Content-Type", "video/mp2t")
 	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
 }
 
-// ticksToSeconds converts Jellyfin 100ns ticks to seconds.
-func ticksToSeconds(ticks int64) float64 { return float64(ticks) / 1e7 }
-
-// rewritePlaylist rewrites bare segment URIs in an HLS media playlist to point
-// at the segment endpoint, appending the api_key and the start offset. Comment/
-// tag lines (starting with '#') and blank lines are passed through unchanged.
-func rewritePlaylist(playlist []byte, token string, startTicks int64) []byte {
+// rewriteSegments rewrites the bare segment URIs in an HLS media playlist,
+// prefixing them (e.g. "hls/" for the single stream, "" for a variant whose
+// segments are siblings) and appending the api_key and any seek offset. Tag and
+// blank lines pass through unchanged.
+func rewriteSegments(playlist []byte, prefix, token string, startTicks int64) []byte {
 	q := "?api_key=" + url.QueryEscape(token)
 	if startTicks > 0 {
 		q += "&StartTimeTicks=" + strconv.FormatInt(startTicks, 10)
@@ -122,7 +220,7 @@ func rewritePlaylist(playlist []byte, token string, startTicks int64) []byte {
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		lines[i] = "hls/" + url.PathEscape(trimmed) + q
+		lines[i] = prefix + url.PathEscape(trimmed) + q
 	}
 	return []byte(strings.Join(lines, "\n"))
 }

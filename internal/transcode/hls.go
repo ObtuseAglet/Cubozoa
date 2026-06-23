@@ -87,7 +87,7 @@ var ErrUnavailable = errors.New("transcode: ffmpeg unavailable")
 // running. The key is supplied by the caller and identifies a distinct
 // transcode — typically the item plus its start offset — so the same seek
 // position reuses one transcode while a different one spawns its own.
-func (m *Manager) EnsureSession(key, inputPath string, startSeconds float64) (*Session, error) {
+func (m *Manager) EnsureSession(key, inputPath string, startSeconds float64, r Rendition) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -105,7 +105,7 @@ func (m *Manager) EnsureSession(key, inputPath string, startSeconds float64) (*S
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, m.bin, ffmpegArgs(inputPath, dir, startSeconds)...)
+	cmd := exec.CommandContext(ctx, m.bin, ffmpegArgs(inputPath, dir, startSeconds, r)...)
 	// Detach from our stdio; ffmpeg is noisy on stderr.
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -134,7 +134,9 @@ func sessionDir(key string) string {
 // H.264/AAC in MPEG-TS segments. A VOD playlist with unlimited list size is
 // written incrementally as segments complete. When startSeconds > 0 the input
 // is seeked before decoding (fast keyframe seek) so playback can begin mid-file.
-func ffmpegArgs(input, dir string, startSeconds float64) []string {
+// The rendition selects scaling and bitrate; a zero-value rendition transcodes
+// at source resolution with a constant-quality target.
+func ffmpegArgs(input, dir string, startSeconds float64, r Rendition) []string {
 	args := []string{"-nostdin"}
 	if startSeconds > 0 {
 		args = append(args, "-ss", strconv.FormatFloat(startSeconds, 'f', 3, 64))
@@ -143,8 +145,26 @@ func ffmpegArgs(input, dir string, startSeconds float64) []string {
 		"-i", input,
 		"-map", "0:v:0",
 		"-map", "0:a:0?",
-		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-		"-c:a", "aac", "-ac", "2", "-b:a", "128k",
+	)
+	// Video: scale + capped bitrate for a ladder rung, else constant quality.
+	if r.Height > 0 && r.VideoKbps > 0 {
+		vk := strconv.Itoa(r.VideoKbps) + "k"
+		args = append(args,
+			"-vf", "scale=-2:"+strconv.Itoa(r.Height),
+			"-c:v", "libx264", "-preset", "veryfast",
+			"-b:v", vk,
+			"-maxrate", strconv.Itoa(r.VideoKbps*107/100)+"k",
+			"-bufsize", strconv.Itoa(r.VideoKbps*3/2)+"k",
+		)
+	} else {
+		args = append(args, "-c:v", "libx264", "-preset", "veryfast", "-crf", "23")
+	}
+	audioKbps := r.AudioKbps
+	if audioKbps <= 0 {
+		audioKbps = 128
+	}
+	args = append(args,
+		"-c:a", "aac", "-ac", "2", "-b:a", strconv.Itoa(audioKbps)+"k",
 		"-f", "hls",
 		"-hls_time", "6",
 		"-hls_playlist_type", "vod",

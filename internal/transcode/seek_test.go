@@ -10,13 +10,13 @@ import (
 
 func TestFFmpegArgsSeek(t *testing.T) {
 	// No seek: there must be no -ss flag.
-	from0 := strings.Join(ffmpegArgs("/in.mkv", "/dir", 0), " ")
+	from0 := strings.Join(ffmpegArgs("/in.mkv", "/dir", 0, AutoRendition), " ")
 	if strings.Contains(from0, "-ss") {
 		t.Errorf("start=0 should not seek:\n%s", from0)
 	}
 
 	// With an offset: -ss must appear *before* -i (a fast input seek).
-	seeked := ffmpegArgs("/in.mkv", "/dir", 42.5)
+	seeked := ffmpegArgs("/in.mkv", "/dir", 42.5, AutoRendition)
 	ssIdx, iIdx := indexOf(seeked, "-ss"), indexOf(seeked, "-i")
 	if ssIdx < 0 || iIdx < 0 || ssIdx > iIdx {
 		t.Fatalf("-ss must precede -i: %v", seeked)
@@ -34,11 +34,11 @@ func TestSeekSessionsAreDistinct(t *testing.T) {
 	}
 	defer mgr.Close()
 
-	s0, err := mgr.EnsureSession("item:0", video, 0)
+	s0, err := mgr.EnsureSession("item:0", video, 0, AutoRendition)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s1, err := mgr.EnsureSession("item:10000000", video, 1)
+	s1, err := mgr.EnsureSession("item:10000000", video, 1, AutoRendition)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestSeekSessionsAreDistinct(t *testing.T) {
 	}
 
 	// Re-requesting the same key reuses the session.
-	again, _ := mgr.EnsureSession("item:0", video, 0)
+	again, _ := mgr.EnsureSession("item:0", video, 0, AutoRendition)
 	if again.Dir != s0.Dir {
 		t.Fatal("same key should reuse the session")
 	}

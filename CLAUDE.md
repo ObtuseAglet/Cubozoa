@@ -98,6 +98,13 @@ overview/rating/genres + downloaded artwork cached under
 in addition to the library root) are done. The metadata provider is opt-in via
 `CUBOZOA_TMDB_API_KEY` and gracefully disabled otherwise.
 
+Adaptive (multi-bitrate) HLS is in: `/Videos/{id}/master.m3u8` returns an ABR
+master playlist whose rungs come from `transcode.SelectRenditions(width,height,
+bitrate)` (never upscales; top rung = source); each rung is its own scaled
+transcode served at `/Videos/{id}/hls/{quality}/main.m3u8` (+ relative segment
+URLs). `main.m3u8` remains the single auto-rendition stream. Session keys are
+`item:startTicks:quality`. PlaybackInfo advertises the master URL.
+
 Edge hardening is in: direct HTTPS serving (TLS 1.2+) with HSTS over TLS,
 persistent per-account lockout after repeated failures (generic 401, no
 enumeration; policy via `CUBOZOA_LOCKOUT_*`), and structured audit logging
@@ -116,4 +123,5 @@ recovery-code hashes live on the user record (`internal/security/totp.go`,
 6-digit code is appended to the password and `auth.verifyCredentials` splits it.
 Recovery codes are single-use; disable requires a current code.
 
-Open next: adaptive (multi-bitrate) transcoding, a SQL store backend.
+Open next: a SQL store backend (interface is ready; would add a pure-Go SQLite
+dependency — a deliberate decision against the tiny-dependency rule).

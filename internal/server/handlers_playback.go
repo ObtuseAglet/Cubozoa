@@ -41,7 +41,7 @@ func (s *Server) mediaSource(it *store.MediaItem, token string) jellyfin.MediaSo
 		src.SupportsTranscoding = true
 		src.TranscodingSubProtocol = "hls"
 		src.TranscodingContainer = "ts"
-		src.TranscodingURL = "/Videos/" + it.ID + "/main.m3u8?api_key=" + url.QueryEscape(token)
+		src.TranscodingURL = "/Videos/" + it.ID + "/master.m3u8?api_key=" + url.QueryEscape(token)
 	}
 	return src
 }
