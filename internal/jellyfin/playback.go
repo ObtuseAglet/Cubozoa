@@ -30,6 +30,10 @@ type MediaSourceInfo struct {
 	TranscodingURL         string `json:"TranscodingUrl,omitempty"`
 	TranscodingSubProtocol string `json:"TranscodingSubProtocol,omitempty"`
 	TranscodingContainer   string `json:"TranscodingContainer,omitempty"`
+
+	// IsInfiniteStream marks a live source with no fixed duration (e.g. a Live
+	// TV channel), so clients render a live UI instead of a seek bar.
+	IsInfiniteStream bool `json:"IsInfiniteStream,omitempty"`
 }
 
 // MediaStream describes a single track (video, audio, subtitle) within a media

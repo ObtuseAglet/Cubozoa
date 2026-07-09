@@ -100,6 +100,15 @@ func itoaInt(n int) string { return strconv.Itoa(n) }
 // negotiation, since Cubozoa only offers direct play for now.
 func (s *Server) handlePlaybackInfo(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("itemId")
+
+	// A Live TV channel is not in the media store; serve its infinite source.
+	if s.liveTV != nil {
+		if ch, ok := s.liveTV.Channel(id); ok {
+			s.channelPlaybackInfo(w, r, ch.ID, ch.Name)
+			return
+		}
+	}
+
 	it, err := s.media.Item(id)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {

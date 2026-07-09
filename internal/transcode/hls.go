@@ -88,6 +88,24 @@ var ErrUnavailable = errors.New("transcode: ffmpeg unavailable")
 // transcode — typically the item plus its start offset — so the same seek
 // position reuses one transcode while a different one spawns its own.
 func (m *Manager) EnsureSession(key, inputPath string, startSeconds float64, r Rendition) (*Session, error) {
+	return m.ensure(key, func(dir string) []string {
+		return ffmpegArgs(inputPath, dir, startSeconds, r)
+	})
+}
+
+// EnsureLiveSession starts (or joins) a live remux of an infinite upstream
+// stream into a sliding-window HLS playlist. It copies codecs (-c copy) rather
+// than re-encoding, so it is cheap and works for the common case of already-
+// H.264/AAC IPTV streams; old segments are deleted as new ones arrive.
+func (m *Manager) EnsureLiveSession(key, inputURL string) (*Session, error) {
+	return m.ensure(key, func(dir string) []string {
+		return liveArgs(inputURL, dir)
+	})
+}
+
+// ensure returns an existing session for key or starts a new ffmpeg process
+// using args built for the freshly-created session directory.
+func (m *Manager) ensure(key string, buildArgs func(dir string) []string) (*Session, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -105,7 +123,7 @@ func (m *Manager) EnsureSession(key, inputPath string, startSeconds float64, r R
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx, m.bin, ffmpegArgs(inputPath, dir, startSeconds, r)...)
+	cmd := exec.CommandContext(ctx, m.bin, buildArgs(dir)...)
 	// Detach from our stdio; ffmpeg is noisy on stderr.
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -117,11 +135,28 @@ func (m *Manager) EnsureSession(key, inputPath string, startSeconds float64, r R
 
 	sess := &Session{ID: key, Dir: dir, cancel: cancel, lastAccess: time.Now()}
 	m.sessions[key] = sess
-	m.log.Info("transcode session started", "key", key, "start_seconds", startSeconds)
+	m.log.Info("transcode session started", "key", key)
 
 	// Reap process state when ffmpeg exits so it does not linger as a zombie.
 	go func() { _ = cmd.Wait() }()
 	return sess, nil
+}
+
+// liveArgs remuxes an upstream stream into a sliding-window HLS playlist.
+func liveArgs(input, dir string) []string {
+	return []string{
+		"-nostdin",
+		"-fflags", "+genpts",
+		"-i", input,
+		"-c", "copy",
+		"-f", "hls",
+		"-hls_time", "4",
+		"-hls_list_size", "6",
+		"-hls_flags", "delete_segments+temp_file+independent_segments",
+		"-hls_segment_type", "mpegts",
+		"-hls_segment_filename", filepath.Join(dir, segmentGlob),
+		filepath.Join(dir, playlistName),
+	}
 }
 
 // sessionDir maps an arbitrary session key to a safe directory name.
