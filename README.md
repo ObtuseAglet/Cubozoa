@@ -113,6 +113,8 @@ All configuration is via environment variables; every one has a safe default.
 | `CUBOZOA_TLS_CERT_FILE` / `CUBOZOA_TLS_KEY_FILE` | _(empty)_ | Serve HTTPS directly (TLS 1.2+). Set both, or terminate TLS at a proxy. |
 | `CUBOZOA_AUDIT_LOG_FILE` | _(stdout)_ | Append structured security-event (audit) JSON to this file. |
 | `CUBOZOA_LOCKOUT_THRESHOLD` / `CUBOZOA_LOCKOUT_MINUTES` | `5` / `15` | Failed logins before an account locks, and the cool-off window. `0` disables lockout. |
+| `CUBOZOA_IPTV_M3U` | _(empty)_ | M3U playlist (URL or path) whose channels are exposed as Live TV. Empty disables Live TV. |
+| `CUBOZOA_IPTV_REFRESH_HOURS` | `12` | How often the IPTV playlist (and EPG) are reloaded. |
 
 ## Architecture
 

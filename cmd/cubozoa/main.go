@@ -20,6 +20,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/audit"
 	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/config"
+	"github.com/obtuseaglet/cubozoa/internal/livetv"
 	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/metadata"
 	"github.com/obtuseaglet/cubozoa/internal/server"
@@ -119,6 +120,14 @@ func run(log *slog.Logger) error {
 		log.Info("ffmpeg available; HLS transcoding enabled")
 	} else {
 		log.Info("ffmpeg not found; transcoding disabled (direct play only)")
+	}
+
+	// Optional IPTV / Live TV from an M3U playlist.
+	if ltv, ok := livetv.NewService(cfg.IPTVPlaylist, cfg.IPTVRefresh, log); ok {
+		ltv.Start(context.Background())
+		srv.SetLiveTV(ltv)
+		defer ltv.Close()
+		log.Info("Live TV enabled", "playlist", cfg.IPTVPlaylist)
 	}
 
 	httpServer := &http.Server{

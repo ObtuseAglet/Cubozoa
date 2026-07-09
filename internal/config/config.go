@@ -75,6 +75,13 @@ type Config struct {
 	// account; 0 disables lockout. LockoutDuration is the cool-off window.
 	LockoutThreshold int
 	LockoutDuration  time.Duration
+
+	// IPTVPlaylist is an M3U playlist (URL or file path) whose channels are
+	// exposed as Live TV. Empty disables Live TV. IPTVGuide is an optional XMLTV
+	// EPG (URL or path); IPTVRefresh is how often both are reloaded.
+	IPTVPlaylist string
+	IPTVGuide    string
+	IPTVRefresh  time.Duration
 }
 
 // Load resolves configuration from the environment, applying defaults.
@@ -98,6 +105,9 @@ func Load() (*Config, error) {
 		AuditLogFile:     env("CUBOZOA_AUDIT_LOG_FILE", ""),
 		LockoutThreshold: envInt("CUBOZOA_LOCKOUT_THRESHOLD", 5),
 		LockoutDuration:  time.Duration(envInt("CUBOZOA_LOCKOUT_MINUTES", 15)) * time.Minute,
+		IPTVPlaylist:     env("CUBOZOA_IPTV_M3U", ""),
+		IPTVGuide:        env("CUBOZOA_IPTV_EPG", ""),
+		IPTVRefresh:      time.Duration(envInt("CUBOZOA_IPTV_REFRESH_HOURS", 12)) * time.Hour,
 	}
 
 	if c.AdminUsername == "" {

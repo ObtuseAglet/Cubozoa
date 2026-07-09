@@ -84,6 +84,17 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /Library/VirtualFolders", s.requireAdmin(s.handleVirtualFolders))
 	mux.HandleFunc("POST /Library/Refresh", s.requireAdmin(s.handleLibraryRefresh))
 
+	// --- Live TV (IPTV) ---
+	mux.HandleFunc("GET /LiveTv/Info", s.requireAuth(s.handleLiveTvInfo))
+	mux.HandleFunc("GET /LiveTv/Channels", s.requireAuth(s.handleLiveTvChannels))
+	mux.HandleFunc("GET /LiveTv/Channels/{id}", s.requireAuth(s.handleLiveTvChannel))
+	mux.HandleFunc("GET /LiveTv/GuideInfo", s.requireAuth(s.handleGuideInfo))
+	mux.HandleFunc("GET /LiveTv/Programs", s.requireAuth(s.handleLiveTvEmpty))
+	mux.HandleFunc("POST /LiveTv/Programs", s.requireAuth(s.handleLiveTvEmpty))
+	mux.HandleFunc("GET /LiveTv/Recordings", s.requireAuth(s.handleLiveTvEmpty))
+	mux.HandleFunc("GET /LiveTv/Timers", s.requireAuth(s.handleLiveTvEmpty))
+	mux.HandleFunc("GET /LiveTv/SeriesTimers", s.requireAuth(s.handleLiveTvEmpty))
+
 	// --- Display preferences (authenticated) ---
 	mux.HandleFunc("GET /DisplayPreferences/{id}", s.requireAuth(s.handleGetDisplayPreferences))
 	mux.HandleFunc("POST /DisplayPreferences/{id}", s.requireAuth(s.handleUpdateDisplayPreferences))

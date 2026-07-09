@@ -35,6 +35,13 @@ type BaseItemDto struct {
 	AlbumArtist string   `json:"AlbumArtist,omitempty"`
 	Artists     []string `json:"Artists,omitempty"`
 
+	// Live TV fields.
+	Number      string `json:"Number,omitempty"`      // channel number
+	ChannelType string `json:"ChannelType,omitempty"` // "TV"
+	ChannelID   string `json:"ChannelId,omitempty"`   // on a Program
+	StartDate   string `json:"StartDate,omitempty"`   // on a Program
+	EndDate     string `json:"EndDate,omitempty"`     // on a Program
+
 	// External metadata.
 	Overview        string   `json:"Overview,omitempty"`
 	CommunityRating float64  `json:"CommunityRating,omitempty"`

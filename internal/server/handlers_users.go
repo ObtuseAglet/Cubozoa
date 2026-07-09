@@ -78,9 +78,21 @@ func (s *Server) handleUserViews(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError)
 		return
 	}
-	views := make([]jellyfin.BaseItemDto, 0, len(libs))
+	views := make([]jellyfin.BaseItemDto, 0, len(libs)+1)
 	for _, lib := range libs {
 		views = append(views, s.libraryToDto(lib))
+	}
+	// A synthetic Live TV view appears alongside the media libraries when IPTV
+	// channels are configured; clients route it to their Live TV section.
+	if s.liveTVEnabled() {
+		views = append(views, jellyfin.BaseItemDto{
+			Name:           "Live TV",
+			ServerID:       s.store.ServerID(),
+			ID:             "livetv",
+			Type:           "CollectionFolder",
+			CollectionType: "livetv",
+			IsFolder:       true,
+		})
 	}
 	s.writeJSON(w, http.StatusOK, jellyfin.QueryResult[jellyfin.BaseItemDto]{
 		Items:            views,
