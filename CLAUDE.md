@@ -98,6 +98,16 @@ overview/rating/genres + downloaded artwork cached under
 in addition to the library root) are done. The metadata provider is opt-in via
 `CUBOZOA_TMDB_API_KEY` and gracefully disabled otherwise.
 
+Live TV / IPTV is in (`internal/livetv`): an M3U playlist (`CUBOZOA_IPTV_M3U`,
+URL or file, periodically refreshed) is parsed into channels exposed through the
+Jellyfin Live TV API (`/LiveTv/Info,Channels,GuideInfo,Programs`; empty
+recordings/timers) plus a synthetic "Live TV" view. A channel plays by remuxing
+its upstream through ffmpeg into a sliding-window HLS stream
+(`/Videos/{id}/live.m3u8`); PlaybackInfo returns an infinite MediaSource. An
+optional XMLTV guide (`CUBOZOA_IPTV_EPG`) fills `/LiveTv/Programs`. Upstream URLs
+come from operator config, resolved server-side by channel ID (never
+client-supplied).
+
 Adaptive (multi-bitrate) HLS is in: `/Videos/{id}/master.m3u8` returns an ABR
 master playlist whose rungs come from `transcode.SelectRenditions(width,height,
 bitrate)` (never upscales; top rung = source); each rung is its own scaled

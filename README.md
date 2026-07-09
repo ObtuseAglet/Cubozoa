@@ -114,7 +114,8 @@ All configuration is via environment variables; every one has a safe default.
 | `CUBOZOA_AUDIT_LOG_FILE` | _(stdout)_ | Append structured security-event (audit) JSON to this file. |
 | `CUBOZOA_LOCKOUT_THRESHOLD` / `CUBOZOA_LOCKOUT_MINUTES` | `5` / `15` | Failed logins before an account locks, and the cool-off window. `0` disables lockout. |
 | `CUBOZOA_IPTV_M3U` | _(empty)_ | M3U playlist (URL or path) whose channels are exposed as Live TV. Empty disables Live TV. |
-| `CUBOZOA_IPTV_REFRESH_HOURS` | `12` | How often the IPTV playlist (and EPG) are reloaded. |
+| `CUBOZOA_IPTV_EPG` | _(empty)_ | Optional XMLTV guide (URL or path) for the Live TV program guide. |
+| `CUBOZOA_IPTV_REFRESH_HOURS` | `12` | How often the IPTV playlist and EPG are reloaded. |
 
 ## Architecture
 
@@ -218,6 +219,9 @@ interoperates with standard authenticator apps.
 - [x] **Two-factor auth (TOTP).** Opt-in per account, compatible with stock
       Jellyfin clients (append the 6-digit code to your password), with
       authenticator-app enrollment and single-use recovery codes. *(done)*
+- [x] **Live TV (IPTV).** An M3U playlist becomes browsable, playable channels
+      in clients' Live TV section (upstream remuxed to HLS via ffmpeg), with an
+      optional XMLTV program guide. *(done)*
 - [x] **M4b — Transcoding & metadata.** ffprobe-sourced durations/codecs in
       browse and `PlaybackInfo`, plus on-demand HLS transcoding via ffmpeg —
       **seek-aware** and **adaptive (multi-bitrate)** with an ABR master

@@ -124,10 +124,13 @@ func run(log *slog.Logger) error {
 
 	// Optional IPTV / Live TV from an M3U playlist.
 	if ltv, ok := livetv.NewService(cfg.IPTVPlaylist, cfg.IPTVRefresh, log); ok {
+		if cfg.IPTVGuide != "" {
+			ltv.SetGuide(cfg.IPTVGuide)
+		}
 		ltv.Start(context.Background())
 		srv.SetLiveTV(ltv)
 		defer ltv.Close()
-		log.Info("Live TV enabled", "playlist", cfg.IPTVPlaylist)
+		log.Info("Live TV enabled", "playlist", cfg.IPTVPlaylist, "epg", cfg.IPTVGuide != "")
 	}
 
 	httpServer := &http.Server{

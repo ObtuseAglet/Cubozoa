@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,6 +115,67 @@ func TestLiveTvEmptyDvrEndpoints(t *testing.T) {
 		if res.TotalRecordCount != 0 {
 			t.Fatalf("%s should be empty, got %d", path, res.TotalRecordCount)
 		}
+	}
+}
+
+const guideXML = `<?xml version="1.0"?>
+<tv>
+  <programme start="20240115180000 +0000" stop="20240115190000 +0000" channel="bbc1.uk">
+    <title>Evening News</title><desc>Headlines.</desc>
+  </programme>
+  <programme start="20240115190000 +0000" stop="20240115200000 +0000" channel="cnn.us">
+    <title>World Report</title>
+  </programme>
+</tv>`
+
+func TestLiveTvProgramsFromGuide(t *testing.T) {
+	m3u := filepath.Join(t.TempDir(), "channels.m3u")
+	if err := os.WriteFile(m3u, []byte(testPlaylist), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	epg := filepath.Join(t.TempDir(), "guide.xml")
+	if err := os.WriteFile(epg, []byte(guideXML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := store.OpenJSON(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authSvc := auth.New(st, log)
+	authSvc.SeedAdmin("admin", "epg-pass-1")
+	srv := New(&config.Config{ServerName: "Test"}, st, authSvc, media.NewService(st, log), userdata.New(st), log)
+	ltv, _ := livetv.NewService(m3u, time.Hour, log)
+	ltv.SetGuide(epg)
+	ltv.Start(context.Background())
+	t.Cleanup(ltv.Close)
+	srv.SetLiveTV(ltv)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	token, _ := login(t, ts.URL, "admin", "epg-pass-1")
+
+	// Guide window reflects the loaded EPG.
+	var gi jellyfin.GuideInfo
+	authReq(t, http.MethodGet, ts.URL+"/LiveTv/GuideInfo", token, &gi)
+	if !strings.HasPrefix(gi.StartDate, "2024-01-15") {
+		t.Fatalf("guide start not from EPG: %q", gi.StartDate)
+	}
+
+	// Programs for the window return both entries, linked to their channels.
+	var res jellyfin.QueryResult[jellyfin.BaseItemDto]
+	url := ts.URL + "/LiveTv/Programs?MinStartDate=2024-01-15T00:00:00Z&MaxStartDate=2024-01-16T00:00:00Z"
+	authReq(t, http.MethodGet, url, token, &res)
+	if res.TotalRecordCount != 2 {
+		t.Fatalf("expected 2 programs, got %d", res.TotalRecordCount)
+	}
+	p := res.Items[0]
+	if p.Type != "Program" || p.Name != "Evening News" || p.ChannelID == "" {
+		t.Fatalf("unexpected program dto: %+v", p)
+	}
+	if p.StartDate == "" || p.EndDate == "" || p.Overview != "Headlines." {
+		t.Fatalf("program missing fields: %+v", p)
 	}
 }
 

@@ -21,13 +21,28 @@ type Service struct {
 	log      *slog.Logger
 	client   *http.Client
 
-	mu       sync.RWMutex
-	channels []Channel
-	byID     map[string]Channel
-	loadedAt time.Time
+	guide string // optional XMLTV source (URL or path)
+
+	mu            sync.RWMutex
+	channels      []Channel
+	byID          map[string]Channel
+	programsByTvg map[string][]Program
+	guideStart    time.Time
+	guideEnd      time.Time
+	loadedAt      time.Time
 
 	stop chan struct{}
 }
+
+// GuideEntry is a program annotated with the Cubozoa channel ID it belongs to.
+type GuideEntry struct {
+	ChannelID string
+	Program
+}
+
+// SetGuide configures an optional XMLTV EPG source, loaded alongside the
+// playlist on the next refresh.
+func (s *Service) SetGuide(src string) { s.guide = strings.TrimSpace(src) }
 
 // NewService constructs a Live TV service for the given M3U source. It returns
 // ok=false when no playlist is configured (Live TV stays disabled).
@@ -39,12 +54,13 @@ func NewService(playlist string, refresh time.Duration, log *slog.Logger) (*Serv
 		refresh = 12 * time.Hour
 	}
 	return &Service{
-		playlist: playlist,
-		refresh:  refresh,
-		log:      log,
-		client:   &http.Client{Timeout: 30 * time.Second},
-		byID:     map[string]Channel{},
-		stop:     make(chan struct{}),
+		playlist:      playlist,
+		refresh:       refresh,
+		log:           log,
+		client:        &http.Client{Timeout: 30 * time.Second},
+		byID:          map[string]Channel{},
+		programsByTvg: map[string][]Program{},
+		stop:          make(chan struct{}),
 	}, true
 }
 
@@ -87,14 +103,89 @@ func (s *Service) reload(ctx context.Context) error {
 		byID[c.ID] = c
 	}
 
+	// Load the optional EPG. A guide failure is non-fatal — channels still work.
+	programs := map[string][]Program{}
+	var gStart, gEnd time.Time
+	if s.guide != "" {
+		if data, err := s.fetch(ctx, s.guide); err != nil {
+			s.log.Warn("loading EPG failed", "err", err)
+		} else if progs, err := ParseXMLTV(data); err != nil {
+			s.log.Warn("parsing EPG failed", "err", err)
+		} else {
+			programs, gStart, gEnd = groupPrograms(progs)
+			s.log.Info("loaded EPG", "programs", len(progs))
+		}
+	}
+
 	s.mu.Lock()
 	s.channels = channels
 	s.byID = byID
+	s.programsByTvg = programs
+	s.guideStart, s.guideEnd = gStart, gEnd
 	s.loadedAt = time.Now()
 	s.mu.Unlock()
 
 	s.log.Info("loaded IPTV channels", "count", len(channels), "source", s.playlist)
 	return nil
+}
+
+// groupPrograms buckets programs by channel (sorted by start) and returns the
+// overall guide window.
+func groupPrograms(progs []Program) (map[string][]Program, time.Time, time.Time) {
+	byTvg := map[string][]Program{}
+	var start, end time.Time
+	for _, p := range progs {
+		byTvg[p.ChannelTvgID] = append(byTvg[p.ChannelTvgID], p)
+		if start.IsZero() || p.Start.Before(start) {
+			start = p.Start
+		}
+		if end.IsZero() || p.Stop.After(end) {
+			end = p.Stop
+		}
+	}
+	for _, list := range byTvg {
+		sort.SliceStable(list, func(i, j int) bool { return list[i].Start.Before(list[j].Start) })
+	}
+	return byTvg, start, end
+}
+
+// Programs returns EPG entries for the given channel IDs (or all channels when
+// empty) that overlap the [from, to] window, ordered by start time.
+func (s *Service) Programs(channelIDs []string, from, to time.Time) []GuideEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var targets []Channel
+	if len(channelIDs) == 0 {
+		targets = s.channels
+	} else {
+		for _, id := range channelIDs {
+			if c, ok := s.byID[id]; ok {
+				targets = append(targets, c)
+			}
+		}
+	}
+
+	var out []GuideEntry
+	for _, ch := range targets {
+		if ch.TvgID == "" {
+			continue
+		}
+		for _, p := range s.programsByTvg[ch.TvgID] {
+			if p.Stop.After(from) && p.Start.Before(to) {
+				out = append(out, GuideEntry{ChannelID: ch.ID, Program: p})
+			}
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Start.Before(out[j].Start) })
+	return out
+}
+
+// GuideWindow returns the time span the loaded EPG covers (zero times if none).
+func (s *Service) GuideWindow() (time.Time, time.Time) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.guideStart, s.guideEnd
 }
 
 // fetch reads a playlist/guide from an http(s) URL or a local file path.

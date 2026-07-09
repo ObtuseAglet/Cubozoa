@@ -85,17 +85,68 @@ func (s *Server) handleLiveTvChannel(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, s.channelToDto(c))
 }
 
-// GET /LiveTv/GuideInfo — the EPG window (a rolling day until the guide lands).
+// GET /LiveTv/GuideInfo — the window the EPG covers (a rolling day if no guide
+// is loaded).
 func (s *Server) handleGuideInfo(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
+	start, end := now, now.Add(24*time.Hour)
+	if s.liveTV != nil {
+		if gs, ge := s.liveTV.GuideWindow(); !gs.IsZero() && !ge.IsZero() {
+			start, end = gs, ge
+		}
+	}
 	s.writeJSON(w, http.StatusOK, jellyfin.GuideInfo{
-		StartDate: now.Format(time.RFC3339),
-		EndDate:   now.Add(24 * time.Hour).Format(time.RFC3339),
+		StartDate: start.Format(time.RFC3339),
+		EndDate:   end.Format(time.RFC3339),
 	})
 }
 
-// GET|POST /LiveTv/Programs and the recording/timer endpoints return empty,
-// well-formed results: no EPG or DVR yet, but clients must not error.
+// GET|POST /LiveTv/Programs — EPG entries, optionally filtered by ChannelIds and
+// a MinStartDate/MaxStartDate window.
+func (s *Server) handlePrograms(w http.ResponseWriter, r *http.Request) {
+	if s.liveTV == nil {
+		s.writeJSON(w, http.StatusOK, emptyResult())
+		return
+	}
+	q := r.URL.Query()
+	channelIDs := splitCSV(q.Get("ChannelIds"))
+	from := parseTimeOr(q.Get("MinStartDate"), time.Now().Add(-6*time.Hour))
+	to := parseTimeOr(q.Get("MaxStartDate"), time.Now().Add(24*time.Hour))
+
+	entries := s.liveTV.Programs(channelIDs, from, to)
+	items := make([]jellyfin.BaseItemDto, 0, len(entries))
+	for _, e := range entries {
+		items = append(items, s.programToDto(e))
+	}
+	s.writeJSON(w, http.StatusOK, jellyfin.QueryResult[jellyfin.BaseItemDto]{
+		Items:            items,
+		TotalRecordCount: len(items),
+	})
+}
+
+func (s *Server) programToDto(e livetv.GuideEntry) jellyfin.BaseItemDto {
+	return jellyfin.BaseItemDto{
+		Name:      e.Title,
+		ServerID:  s.store.ServerID(),
+		ID:        e.ID,
+		Type:      "Program",
+		MediaType: "Video",
+		ChannelID: e.ChannelID,
+		Overview:  e.Description,
+		StartDate: e.Start.Format(time.RFC3339),
+		EndDate:   e.Stop.Format(time.RFC3339),
+	}
+}
+
+func parseTimeOr(s string, def time.Time) time.Time {
+	if t, err := time.Parse(time.RFC3339, s); err == nil {
+		return t
+	}
+	return def
+}
+
+// handleLiveTvEmpty answers the DVR endpoints (recordings/timers) with an empty,
+// well-formed result: no recording yet, but clients must not error.
 func (s *Server) handleLiveTvEmpty(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, emptyResult())
 }
