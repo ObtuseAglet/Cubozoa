@@ -1,11 +1,13 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"net/url"
 
 	"github.com/obtuseaglet/cubozoa/internal/jellyfin"
 	"github.com/obtuseaglet/cubozoa/internal/security"
+	"github.com/obtuseaglet/cubozoa/internal/transcode"
 )
 
 // channelPlaybackInfo builds the PlaybackInfo response for a Live TV channel:
@@ -35,11 +37,19 @@ func (s *Server) channelPlaybackInfo(w http.ResponseWriter, r *http.Request, cha
 	})
 }
 
-// liveSessionKey identifies a channel's live remux session.
-func liveSessionKey(channelID string) string { return "live:" + channelID }
+// liveSessionKey identifies a channel's live session. A channel that failed to
+// remux (codecs not copyable) is served from a separate re-encode session; the
+// server remembers that choice so playlist and segment requests agree.
+func liveSessionKey(channelID string, reencode bool) string {
+	if reencode {
+		return "livetc:" + channelID
+	}
+	return "live:" + channelID
+}
 
-// GET /Videos/{id}/live.m3u8 — start (or join) a channel's live HLS remux and
-// return its (sliding-window) media playlist.
+// GET /Videos/{id}/live.m3u8 — start (or join) a channel's live HLS stream and
+// return its (sliding-window) media playlist. If a plain remux fails because the
+// upstream codecs cannot be copied, it transparently falls back to re-encoding.
 func (s *Server) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 	if s.transcoder == nil || s.liveTV == nil {
 		s.writeError(w, http.StatusNotFound)
@@ -52,13 +62,16 @@ func (s *Server) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := liveSessionKey(id)
-	if _, err := s.transcoder.EnsureLiveSession(key, upstream); err != nil {
-		s.log.Error("starting live stream", "channel", id, "err", err)
-		s.writeError(w, http.StatusInternalServerError)
-		return
+	reencode := s.liveReencode(id)
+	playlist, err := s.startLive(id, upstream, reencode)
+	if errors.Is(err, transcode.ErrSessionFailed) && !reencode {
+		// The cheap remux failed; retry once by re-encoding and remember it.
+		s.transcoder.Stop(liveSessionKey(id, false))
+		s.setLiveReencode(id)
+		reencode = true
+		s.log.Info("live remux failed; falling back to transcoding", "channel", id)
+		playlist, err = s.startLive(id, upstream, true)
 	}
-	playlist, err := s.transcoder.Playlist(key)
 	if err != nil {
 		s.log.Warn("live playlist not ready", "channel", id, "err", err)
 		s.writeError(w, http.StatusServiceUnavailable)
@@ -67,11 +80,36 @@ func (s *Server) handleLiveStream(w http.ResponseWriter, r *http.Request) {
 	s.writePlaylist(w, rewriteSegments(playlist, "live/", clientAuthFrom(r).Token, 0))
 }
 
-// GET /Videos/{id}/live/{seg} — a segment of a channel's live remux.
+// startLive ensures the session (remux or re-encode) and returns its playlist.
+func (s *Server) startLive(id, upstream string, reencode bool) ([]byte, error) {
+	key := liveSessionKey(id, reencode)
+	var err error
+	if reencode {
+		_, err = s.transcoder.EnsureLiveTranscodeSession(key, upstream)
+	} else {
+		_, err = s.transcoder.EnsureLiveSession(key, upstream)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.transcoder.Playlist(key)
+}
+
+// GET /Videos/{id}/live/{seg} — a segment of a channel's live stream.
 func (s *Server) handleLiveSegment(w http.ResponseWriter, r *http.Request) {
 	if s.transcoder == nil {
 		s.writeError(w, http.StatusNotFound)
 		return
 	}
-	s.serveSegment(w, r, liveSessionKey(r.PathValue("id")), r.PathValue("seg"))
+	id := r.PathValue("id")
+	s.serveSegment(w, r, liveSessionKey(id, s.liveReencode(id)), r.PathValue("seg"))
+}
+
+func (s *Server) liveReencode(channelID string) bool {
+	_, ok := s.liveReencodeChannels.Load(channelID)
+	return ok
+}
+
+func (s *Server) setLiveReencode(channelID string) {
+	s.liveReencodeChannels.Store(channelID, struct{}{})
 }

@@ -29,6 +29,13 @@ func (s *Server) channelToDto(c livetv.Channel) jellyfin.BaseItemDto {
 		// Advertise a primary image; it is proxied from the upstream logo URL.
 		dto.ImageTags = map[string]string{"Primary": c.ID}
 	}
+	// Surface the currently-airing program on the tile when an EPG is loaded.
+	if s.liveTV != nil {
+		if prog, ok := s.liveTV.CurrentProgram(c.ID, time.Now()); ok {
+			p := s.programToDto(prog)
+			dto.CurrentProgram = &p
+		}
+	}
 	return dto
 }
 

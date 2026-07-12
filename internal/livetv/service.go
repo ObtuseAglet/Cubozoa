@@ -181,6 +181,23 @@ func (s *Service) Programs(channelIDs []string, from, to time.Time) []GuideEntry
 	return out
 }
 
+// CurrentProgram returns the program airing on a channel at time `at`, if the
+// EPG has one.
+func (s *Service) CurrentProgram(channelID string, at time.Time) (GuideEntry, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	ch, ok := s.byID[channelID]
+	if !ok || ch.TvgID == "" {
+		return GuideEntry{}, false
+	}
+	for _, p := range s.programsByTvg[ch.TvgID] {
+		if !p.Start.After(at) && p.Stop.After(at) {
+			return GuideEntry{ChannelID: ch.ID, Program: p}, true
+		}
+	}
+	return GuideEntry{}, false
+}
+
 // GuideWindow returns the time span the loaded EPG covers (zero times if none).
 func (s *Service) GuideWindow() (time.Time, time.Time) {
 	s.mu.RLock()

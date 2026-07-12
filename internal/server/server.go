@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"github.com/obtuseaglet/cubozoa/internal/audit"
 	"github.com/obtuseaglet/cubozoa/internal/auth"
@@ -30,6 +31,10 @@ type Server struct {
 	log        *slog.Logger
 
 	limiter *rateLimiter
+
+	// liveReencodeChannels records channels whose live remux failed and must be
+	// served by re-encoding instead (channelID -> struct{}).
+	liveReencodeChannels sync.Map
 }
 
 // SetAudit attaches an audit logger for security events. Nil is safe (events

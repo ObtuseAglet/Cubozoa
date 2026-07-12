@@ -85,6 +85,65 @@ func newLiveStreamServer(t *testing.T) (*httptest.Server, string, string) {
 	return ts, token, chans.Items[0].ID
 }
 
+// TestLiveFallbackMarksChannel verifies that when the cheap remux fails (here
+// because the upstream is not media), the handler falls back to re-encoding and
+// remembers that choice for the channel.
+func TestLiveFallbackMarksChannel(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not available")
+	}
+	// Upstream that returns non-media bytes, so both copy and re-encode fail.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("definitely not a video stream"))
+	}))
+	t.Cleanup(upstream.Close)
+
+	m3u := filepath.Join(t.TempDir(), "ch.m3u")
+	os.WriteFile(m3u, []byte("#EXTM3U\n#EXTINF:-1 tvg-id=\"bad.ch\",Bad Channel\n"+upstream.URL+"/x.ts\n"), 0o644)
+
+	st, _ := store.OpenJSON(t.TempDir())
+	t.Cleanup(func() { st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authSvc := auth.New(st, log)
+	authSvc.SeedAdmin("admin", "fallback-pass-1")
+	srv := New(&config.Config{ServerName: "Test"}, st, authSvc, media.NewService(st, log), userdata.New(st), log)
+	mgr, ok := transcode.NewManager("", t.TempDir(), log)
+	if !ok {
+		t.Skip("ffmpeg manager unavailable")
+	}
+	t.Cleanup(mgr.Close)
+	srv.SetTranscoder(mgr)
+	ltv, _ := livetv.NewService(m3u, time.Hour, log)
+	ltv.Start(context.Background())
+	t.Cleanup(ltv.Close)
+	srv.SetLiveTV(ltv)
+
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	token, _ := login(t, ts.URL, "admin", "fallback-pass-1")
+
+	var chans jellyfin.QueryResult[jellyfin.BaseItemDto]
+	authReq(t, http.MethodGet, ts.URL+"/LiveTv/Channels", token, &chans)
+	chID := chans.Items[0].ID
+
+	if srv.liveReencode(chID) {
+		t.Fatal("channel should not start in re-encode mode")
+	}
+	// The stream is unusable, so this returns 503 — but the remux failure must
+	// have driven the handler through the transcode fallback.
+	resp, err := http.Get(ts.URL + "/Videos/" + chID + "/live.m3u8?api_key=" + token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 (unusable upstream)", resp.StatusCode)
+	}
+	if !srv.liveReencode(chID) {
+		t.Fatal("remux failure should have switched the channel to re-encode mode")
+	}
+}
+
 func TestChannelPlaybackInfoIsInfinite(t *testing.T) {
 	ts, token, chID := newLiveStreamServer(t)
 

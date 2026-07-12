@@ -179,6 +179,55 @@ func TestLiveTvProgramsFromGuide(t *testing.T) {
 	}
 }
 
+func TestLiveTvCurrentProgramOnChannel(t *testing.T) {
+	// A guide whose program spans "now" should appear as the channel's
+	// CurrentProgram (the "what's on" line on a tile).
+	const xmltvLayout = "20060102150405 -0700"
+	now := time.Now().UTC()
+	guide := `<tv><programme start="` + now.Add(-30*time.Minute).Format(xmltvLayout) +
+		`" stop="` + now.Add(30*time.Minute).Format(xmltvLayout) +
+		`" channel="bbc1.uk"><title>Live Now Show</title><desc>On air.</desc></programme></tv>`
+
+	m3u := filepath.Join(t.TempDir(), "channels.m3u")
+	os.WriteFile(m3u, []byte(testPlaylist), 0o644)
+	epg := filepath.Join(t.TempDir(), "guide.xml")
+	os.WriteFile(epg, []byte(guide), 0o644)
+
+	st, _ := store.OpenJSON(t.TempDir())
+	t.Cleanup(func() { st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authSvc := auth.New(st, log)
+	authSvc.SeedAdmin("admin", "now-pass-1")
+	srv := New(&config.Config{ServerName: "Test"}, st, authSvc, media.NewService(st, log), userdata.New(st), log)
+	ltv, _ := livetv.NewService(m3u, time.Hour, log)
+	ltv.SetGuide(epg)
+	ltv.Start(context.Background())
+	t.Cleanup(ltv.Close)
+	srv.SetLiveTV(ltv)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	token, _ := login(t, ts.URL, "admin", "now-pass-1")
+
+	var res jellyfin.QueryResult[jellyfin.BaseItemDto]
+	authReq(t, http.MethodGet, ts.URL+"/LiveTv/Channels", token, &res)
+
+	var bbc *jellyfin.BaseItemDto
+	for i := range res.Items {
+		if res.Items[i].Name == "BBC One" {
+			bbc = &res.Items[i]
+		}
+	}
+	if bbc == nil {
+		t.Fatal("BBC One channel missing")
+	}
+	if bbc.CurrentProgram == nil {
+		t.Fatalf("channel should carry a current program: %+v", bbc)
+	}
+	if bbc.CurrentProgram.Name != "Live Now Show" || bbc.CurrentProgram.Type != "Program" {
+		t.Fatalf("unexpected current program: %+v", bbc.CurrentProgram)
+	}
+}
+
 func TestLiveTvRequiresAuth(t *testing.T) {
 	ts, _ := newLiveTVServer(t)
 	resp, err := http.Get(ts.URL + "/LiveTv/Channels")

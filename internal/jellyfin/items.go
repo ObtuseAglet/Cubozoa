@@ -50,6 +50,10 @@ type BaseItemDto struct {
 	ImageTags         map[string]string `json:"ImageTags,omitempty"`
 	BackdropImageTags []string          `json:"BackdropImageTags,omitempty"`
 	UserData          *UserItemDataDto  `json:"UserData,omitempty"`
+
+	// CurrentProgram is the program now airing on a TvChannel (drives the
+	// "what's on" line on a channel tile).
+	CurrentProgram *BaseItemDto `json:"CurrentProgram,omitempty"`
 }
 
 // UserItemDataDto carries per-user playback state for an item. For now these

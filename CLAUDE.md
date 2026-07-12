@@ -103,10 +103,14 @@ URL or file, periodically refreshed) is parsed into channels exposed through the
 Jellyfin Live TV API (`/LiveTv/Info,Channels,GuideInfo,Programs`; empty
 recordings/timers) plus a synthetic "Live TV" view. A channel plays by remuxing
 its upstream through ffmpeg into a sliding-window HLS stream
-(`/Videos/{id}/live.m3u8`); PlaybackInfo returns an infinite MediaSource. An
-optional XMLTV guide (`CUBOZOA_IPTV_EPG`) fills `/LiveTv/Programs`. Upstream URLs
-come from operator config, resolved server-side by channel ID (never
-client-supplied).
+(`/Videos/{id}/live.m3u8`, `-c copy`); if the remux fails because the codecs
+can't be copied (`transcode.ErrSessionFailed`, detected via a per-session `done`
+channel), the handler transparently falls back to re-encoding and remembers that
+per channel (`Server.liveReencodeChannels`). PlaybackInfo returns an infinite
+MediaSource. An optional XMLTV guide (`CUBOZOA_IPTV_EPG`) fills `/LiveTv/Programs`
+and the currently-airing program is surfaced on each channel tile
+(`BaseItemDto.CurrentProgram`). Upstream URLs come from operator config, resolved
+server-side by channel ID (never client-supplied).
 
 Adaptive (multi-bitrate) HLS is in: `/Videos/{id}/master.m3u8` returns an ABR
 master playlist whose rungs come from `transcode.SelectRenditions(width,height,

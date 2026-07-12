@@ -41,6 +41,7 @@ type Session struct {
 
 	cancel     context.CancelFunc
 	lastAccess time.Time
+	done       chan struct{} // closed when the ffmpeg process exits
 }
 
 // segmentName is the strict pattern for a servable segment file. Anything else
@@ -82,6 +83,10 @@ func NewManager(path, baseDir string, log *slog.Logger) (*Manager, bool) {
 // ErrUnavailable is returned by operations when transcoding is not configured.
 var ErrUnavailable = errors.New("transcode: ffmpeg unavailable")
 
+// ErrSessionFailed indicates ffmpeg exited before producing any output, e.g. an
+// upstream whose codecs cannot be copied into the target container.
+var ErrSessionFailed = errors.New("transcode: session failed to produce output")
+
 // EnsureSession returns the session for key, starting an ffmpeg transcode of
 // inputPath (beginning at startSeconds into the file) if one is not already
 // running. The key is supplied by the caller and identifies a distinct
@@ -99,8 +104,15 @@ func (m *Manager) EnsureSession(key, inputPath string, startSeconds float64, r R
 // H.264/AAC IPTV streams; old segments are deleted as new ones arrive.
 func (m *Manager) EnsureLiveSession(key, inputURL string) (*Session, error) {
 	return m.ensure(key, func(dir string) []string {
-		return liveArgs(inputURL, dir)
+		return liveArgs(inputURL, dir, false)
 	})
+}
+
+// Stop tears down a session by key (e.g. to swap a failed remux for a re-encode).
+func (m *Manager) Stop(key string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.killLocked(key)
 }
 
 // ensure returns an existing session for key or starts a new ffmpeg process
@@ -133,22 +145,38 @@ func (m *Manager) ensure(key string, buildArgs func(dir string) []string) (*Sess
 		return nil, fmt.Errorf("transcode: starting ffmpeg: %w", err)
 	}
 
-	sess := &Session{ID: key, Dir: dir, cancel: cancel, lastAccess: time.Now()}
+	sess := &Session{ID: key, Dir: dir, cancel: cancel, lastAccess: time.Now(), done: make(chan struct{})}
 	m.sessions[key] = sess
 	m.log.Info("transcode session started", "key", key)
 
-	// Reap process state when ffmpeg exits so it does not linger as a zombie.
-	go func() { _ = cmd.Wait() }()
+	// Reap process state when ffmpeg exits (so it does not linger as a zombie)
+	// and signal completion so a caller can detect an early failure.
+	go func() { _ = cmd.Wait(); close(sess.done) }()
 	return sess, nil
 }
 
-// liveArgs remuxes an upstream stream into a sliding-window HLS playlist.
-func liveArgs(input, dir string) []string {
-	return []string{
-		"-nostdin",
-		"-fflags", "+genpts",
-		"-i", input,
-		"-c", "copy",
+// EnsureLiveTranscodeSession is the re-encoding fallback for a live upstream
+// whose codecs cannot be copied: it transcodes to H.264/AAC while keeping the
+// same sliding-window HLS output.
+func (m *Manager) EnsureLiveTranscodeSession(key, inputURL string) (*Session, error) {
+	return m.ensure(key, func(dir string) []string {
+		return liveArgs(inputURL, dir, true)
+	})
+}
+
+// liveArgs builds the ffmpeg command for a live stream. With reencode=false it
+// copies codecs (cheap remux); with reencode=true it transcodes to H.264/AAC.
+func liveArgs(input, dir string, reencode bool) []string {
+	args := []string{"-nostdin", "-fflags", "+genpts", "-i", input}
+	if reencode {
+		args = append(args,
+			"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+			"-c:a", "aac", "-ac", "2", "-b:a", "128k",
+		)
+	} else {
+		args = append(args, "-c", "copy")
+	}
+	args = append(args,
 		"-f", "hls",
 		"-hls_time", "4",
 		"-hls_list_size", "6",
@@ -156,7 +184,8 @@ func liveArgs(input, dir string) []string {
 		"-hls_segment_type", "mpegts",
 		"-hls_segment_filename", filepath.Join(dir, segmentGlob),
 		filepath.Join(dir, playlistName),
-	}
+	)
+	return args
 }
 
 // sessionDir maps an arbitrary session key to a safe directory name.
@@ -224,6 +253,17 @@ func (m *Manager) Playlist(key string) ([]byte, error) {
 	for {
 		if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
 			return data, nil
+		}
+		// If ffmpeg has already exited without producing a playlist, the input
+		// is unusable (e.g. a codec that cannot be copied). Report it distinctly
+		// so callers can fall back to re-encoding.
+		select {
+		case <-sess.done:
+			if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
+				return data, nil
+			}
+			return nil, ErrSessionFailed
+		default:
 		}
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("transcode: playlist not ready")
