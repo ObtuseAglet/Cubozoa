@@ -30,6 +30,28 @@ type Channel struct {
 // attrRe extracts key="value" attributes from an #EXTINF line.
 var attrRe = regexp.MustCompile(`([a-zA-Z0-9\-]+)="([^"]*)"`)
 
+// M3UGuideURL extracts an EPG URL advertised in the playlist's #EXTM3U header
+// via the common url-tvg / x-tvg-url / tvg-url attributes (comma-separated URLs
+// are returned joined the same way). Empty when none is present.
+func M3UGuideURL(data []byte) string {
+	for _, raw := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
+		line := strings.TrimSpace(raw)
+		if !strings.HasPrefix(line, "#EXTM3U") {
+			continue
+		}
+		for _, m := range attrRe.FindAllStringSubmatch(line, -1) {
+			switch strings.ToLower(m[1]) {
+			case "url-tvg", "x-tvg-url", "tvg-url":
+				if m[2] != "" {
+					return m[2]
+				}
+			}
+		}
+		return ""
+	}
+	return ""
+}
+
 // ParseM3U parses an M3U/M3U8 playlist into channels. It is lenient: malformed
 // or non-media lines are skipped rather than aborting the parse, and an entry is
 // only emitted once a URL line follows its #EXTINF header.

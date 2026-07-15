@@ -1,6 +1,8 @@
 package livetv
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -171,19 +173,17 @@ func (s *Service) reload(ctx context.Context) error {
 		byID[c.ID] = c
 	}
 
-	// Load the optional EPG. A guide failure is non-fatal — channels still work.
-	programs := map[string][]Program{}
-	var gStart, gEnd time.Time
-	if s.guide != "" {
-		if data, err := s.fetch(ctx, s.guide); err != nil {
-			s.log.Warn("loading EPG failed", "err", err)
-		} else if progs, err := ParseXMLTV(data); err != nil {
-			s.log.Warn("parsing EPG failed", "err", err)
-		} else {
-			programs, gStart, gEnd = groupPrograms(progs)
-			s.log.Info("loaded EPG", "programs", len(progs))
+	// Determine EPG sources: explicit configuration wins; otherwise fall back to
+	// a url-tvg advertised in the playlist header. Multiple comma-separated URLs
+	// are merged. A guide failure is non-fatal — channels still work.
+	sources := splitSources(s.guide)
+	if len(sources) == 0 {
+		if headerURL := M3UGuideURL(data); headerURL != "" {
+			sources = splitSources(headerURL)
+			s.log.Info("using EPG advertised by playlist", "url", headerURL)
 		}
 	}
+	programs, gStart, gEnd := s.loadGuide(ctx, sources)
 
 	s.mu.Lock()
 	s.channels = channels
@@ -195,6 +195,41 @@ func (s *Service) reload(ctx context.Context) error {
 
 	s.log.Info("loaded IPTV channels", "count", len(channels), "source", s.playlist)
 	return nil
+}
+
+// loadGuide fetches and parses each EPG source, merging all programs.
+func (s *Service) loadGuide(ctx context.Context, sources []string) (map[string][]Program, time.Time, time.Time) {
+	var all []Program
+	for _, src := range sources {
+		data, err := s.fetch(ctx, src)
+		if err != nil {
+			s.log.Warn("loading EPG failed", "src", src, "err", err)
+			continue
+		}
+		progs, err := ParseXMLTV(data)
+		if err != nil {
+			s.log.Warn("parsing EPG failed", "src", src, "err", err)
+			continue
+		}
+		all = append(all, progs...)
+	}
+	if len(all) == 0 {
+		return map[string][]Program{}, time.Time{}, time.Time{}
+	}
+	byTvg, start, end := groupPrograms(all)
+	s.log.Info("loaded EPG", "programs", len(all), "sources", len(sources))
+	return byTvg, start, end
+}
+
+// splitSources splits a comma-separated list of non-empty, trimmed sources.
+func splitSources(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // groupPrograms buckets programs by channel (sorted by start) and returns the
@@ -288,9 +323,35 @@ func (s *Service) fetch(ctx context.Context, src string) ([]byte, error) {
 		if resp.StatusCode != http.StatusOK {
 			return nil, fmt.Errorf("livetv: fetching %s: status %d", src, resp.StatusCode)
 		}
-		return io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 MiB cap
+		data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 MiB cap
+		if err != nil {
+			return nil, err
+		}
+		return maybeGunzip(data), nil
 	}
-	return os.ReadFile(src)
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return nil, err
+	}
+	return maybeGunzip(data), nil
+}
+
+// maybeGunzip transparently decompresses gzip data (many public playlists and
+// XMLTV guides are served as .gz), returning the input unchanged otherwise.
+func maybeGunzip(data []byte) []byte {
+	if len(data) < 2 || data[0] != 0x1f || data[1] != 0x8b {
+		return data
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return data
+	}
+	defer zr.Close()
+	out, err := io.ReadAll(io.LimitReader(zr, 256<<20)) // 256 MiB decompressed cap
+	if err != nil || len(out) == 0 {
+		return data
+	}
+	return out
 }
 
 // Channels returns all channels, ordered by numeric channel number then name.
