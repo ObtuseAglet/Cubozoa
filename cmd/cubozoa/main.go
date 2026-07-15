@@ -56,11 +56,12 @@ func run(log *slog.Logger) error {
 		"bind", cfg.BindAddress,
 	)
 
-	st, err := store.OpenJSON(cfg.DataDir)
+	st, err := openStore(cfg.StoreBackend, cfg.DataDir)
 	if err != nil {
 		return err
 	}
 	defer st.Close()
+	log.Info("datastore ready", "backend", cfg.StoreBackend)
 
 	// Audit log: structured security events, optionally to a dedicated file.
 	auditWriter, auditClose, err := openAuditWriter(cfg.AuditLogFile)
@@ -238,6 +239,20 @@ func openAuditWriter(path string) (io.Writer, func(), error) {
 		return nil, nil, fmt.Errorf("opening audit log: %w", err)
 	}
 	return f, func() { f.Close() }, nil
+}
+
+// openStore opens the datastore backend selected by configuration. The backend
+// string is validated in config.Load, so the default arm is unreachable in
+// practice; it exists to fail loudly rather than silently pick one.
+func openStore(backend, dataDir string) (store.Store, error) {
+	switch backend {
+	case "json":
+		return store.OpenJSON(dataDir)
+	case "bolt":
+		return store.OpenBolt(dataDir)
+	default:
+		return nil, fmt.Errorf("unknown store backend %q", backend)
+	}
 }
 
 // loadAliases reads a JSON object mapping channel name -> guide tvg-id.

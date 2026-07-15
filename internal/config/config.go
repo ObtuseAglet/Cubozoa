@@ -25,6 +25,11 @@ type Config struct {
 	// DataDir is where Cubozoa persists its datastore and server identity.
 	DataDir string
 
+	// StoreBackend selects the persistence engine: "bolt" (default) is the
+	// embedded bbolt B+tree store; "json" is the legacy single-file store, kept
+	// for small deployments and debugging.
+	StoreBackend string
+
 	// MediaDir, if set, is a root directory whose immediate subdirectories are
 	// auto-registered as libraries on startup (the Plex-like "point it at a
 	// folder" experience). Library type is inferred from the folder name.
@@ -94,6 +99,7 @@ func Load() (*Config, error) {
 	c := &Config{
 		BindAddress:      env("CUBOZOA_BIND_ADDRESS", ":8096"),
 		DataDir:          env("CUBOZOA_DATA_DIR", defaultDataDir()),
+		StoreBackend:     strings.ToLower(env("CUBOZOA_STORE", "bolt")),
 		MediaDir:         env("CUBOZOA_MEDIA_DIR", ""),
 		ServerName:       env("CUBOZOA_SERVER_NAME", defaultServerName()),
 		PublicBaseURL:    strings.TrimRight(env("CUBOZOA_PUBLIC_BASE_URL", ""), "/"),
@@ -122,6 +128,10 @@ func Load() (*Config, error) {
 
 	if (c.TLSCertFile == "") != (c.TLSKeyFile == "") {
 		return nil, fmt.Errorf("config: CUBOZOA_TLS_CERT_FILE and CUBOZOA_TLS_KEY_FILE must be set together")
+	}
+
+	if c.StoreBackend != "bolt" && c.StoreBackend != "json" {
+		return nil, fmt.Errorf("config: CUBOZOA_STORE must be \"bolt\" or \"json\", got %q", c.StoreBackend)
 	}
 
 	abs, err := filepath.Abs(c.DataDir)

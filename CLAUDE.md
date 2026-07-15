@@ -15,7 +15,9 @@ goals, in priority order: (1) security, (2) Jellyfin client compatibility,
   `internal/jellyfin` are what real clients deserialize. Changing them can break
   clients. When adding endpoints, match Jellyfin's request/response shapes.
 - **Keep the dependency surface tiny.** Current deps: Go stdlib +
-  `golang.org/x/crypto`. Adding a dependency is a security decision — justify it.
+  `golang.org/x/crypto` + `go.etcd.io/bbolt` (embedded datastore; its only
+  transitive dep, `golang.org/x/sys`, was already indirect). Adding a dependency
+  is a security decision — justify it.
 
 ## Layout
 
@@ -23,7 +25,7 @@ goals, in priority order: (1) security, (2) Jellyfin client compatibility,
 cmd/cubozoa        entrypoint: config, wiring, hardened http.Server, signals
 internal/config    env-driven config, safe defaults
 internal/security  argon2id, secure tokens, constant-time compare  (crypto lives ONLY here)
-internal/store     Store interface + JSON impl; swap for SQL later without touching callers
+internal/store     Store interface + bbolt (default) and JSON impls; swap backends without touching callers
 internal/auth      seeding, credential verification, session lifecycle
 internal/media     library scanner + browse service (filesystem -> items)
 internal/userdata  per-user resume position, watched/favorite state
@@ -152,5 +154,17 @@ recovery-code hashes live on the user record (`internal/security/totp.go`,
 6-digit code is appended to the password and `auth.verifyCredentials` splits it.
 Recovery codes are single-use; disable requires a current code.
 
-Open next: a SQL store backend (interface is ready; would add a pure-Go SQLite
-dependency — a deliberate decision against the tiny-dependency rule).
+An embedded bbolt store backend is done (`internal/store/boltstore.go`): a
+durable B+tree store selected by `CUBOZOA_STORE=bolt|json` (default `bolt`).
+Each call is a single transaction (per-record fsync, no whole-file rewrite), and
+the hot lookups are served from secondary-index buckets — `idx_session_token`
+(auth on every request), `idx_item_library`, and `idx_item_parent` (browse) —
+instead of scanning. A shared conformance test (`conformance_test.go`) runs the
+same assertions against both backends to guarantee parity; benchmarks
+(`bench_test.go`) show the resume-write path ~28× faster and browse ~8× faster
+than the JSON store. No SQL layer was added, so there is no query-language attack
+surface; bbolt's only transitive dep was already indirect.
+
+Open next: an optional Postgres backend (`jackc/pgx`) for large/multi-node
+deployments — the Store interface already supports it; it stays opt-in so the
+default single-binary deployment needs no external database.

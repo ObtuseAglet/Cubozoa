@@ -101,6 +101,7 @@ All configuration is via environment variables; every one has a safe default.
 | --- | --- | --- |
 | `CUBOZOA_BIND_ADDRESS` | `:8096` | Listen address (`host:port`). |
 | `CUBOZOA_DATA_DIR` | OS config dir `/cubozoa` | Where the datastore and server identity live. |
+| `CUBOZOA_STORE` | `bolt` | Datastore backend: `bolt` (embedded bbolt B+tree, `cubozoa.db`) or `json` (legacy single file, `cubozoa.json`). |
 | `CUBOZOA_MEDIA_DIR` | _(empty)_ | Root folder whose subdirectories are auto-registered as libraries (type inferred from the folder name). |
 | `CUBOZOA_SERVER_NAME` | hostname | Friendly name shown on the login screen. |
 | `CUBOZOA_PUBLIC_BASE_URL` | _(empty)_ | Address advertised to clients; otherwise reflected from the request. |
@@ -141,8 +142,10 @@ internal/
 
 The layers depend inward: handlers use the `auth` service, which uses the
 `store` interface and `security` primitives. The `store` interface means the
-current dependency-free JSON store can be swapped for SQLite/Postgres without
-touching business logic as the data model grows.
+backend is swappable without touching business logic: Cubozoa ships an embedded
+bbolt B+tree store (default) and a legacy single-file JSON store, selectable via
+`CUBOZOA_STORE`, and leaves room for an optional Postgres backend as the data
+model grows.
 
 ## Security model
 
