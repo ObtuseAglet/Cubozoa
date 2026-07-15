@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +29,20 @@ type ChannelSource interface {
 	StreamURL(channelID string) (string, bool)
 }
 
+// Airing is one upcoming program used to expand series timers into recordings.
+type Airing struct {
+	ProgramID   string
+	ChannelID   string
+	ChannelName string
+	Title       string
+	Start       time.Time
+	Stop        time.Time
+}
+
+// ProgramSource returns the upcoming programs in a window. It is optional; when
+// nil, series timers cannot be expanded.
+type ProgramSource func(from, to time.Time) []Airing
+
 // Recorder schedules and runs channel recordings.
 type Recorder struct {
 	store    store.Store
@@ -36,9 +51,17 @@ type Recorder struct {
 	channels ChannelSource
 	log      *slog.Logger
 
-	mu     sync.Mutex
-	active map[string]context.CancelFunc // recordingID -> cancel
-	stop   chan struct{}
+	mu       sync.Mutex
+	active   map[string]context.CancelFunc // recordingID -> cancel
+	programs ProgramSource
+	stop     chan struct{}
+}
+
+// SetProgramSource supplies upcoming-program data used to expand series timers.
+func (r *Recorder) SetProgramSource(fn ProgramSource) {
+	r.mu.Lock()
+	r.programs = fn
+	r.mu.Unlock()
 }
 
 // New constructs a Recorder. It returns ok=false when ffmpeg is unavailable, so
@@ -186,16 +209,62 @@ func (r *Recorder) filter(keep func(*store.Recording) bool) []*store.Recording {
 	return out
 }
 
-// loop periodically starts due recordings and expires missed ones.
+// ScheduleSeries creates a series timer and immediately expands current
+// upcoming airings into recordings.
+func (r *Recorder) ScheduleSeries(channelID, channelName, name string, recordAny bool) (*store.SeriesTimer, error) {
+	if name == "" {
+		return nil, fmt.Errorf("dvr: series timer needs a name")
+	}
+	id, err := security.NewID()
+	if err != nil {
+		return nil, err
+	}
+	st := &store.SeriesTimer{
+		ID:               id,
+		ChannelID:        channelID,
+		ChannelName:      channelName,
+		Name:             name,
+		RecordAnyChannel: recordAny,
+		CreatedAt:        time.Now().UTC(),
+	}
+	if err := r.store.CreateSeriesTimer(st); err != nil {
+		return nil, err
+	}
+	r.log.Info("series timer created", "id", id, "name", name)
+	r.expandSeries()
+	return st, nil
+}
+
+// CancelSeries removes a series timer (existing scheduled recordings remain).
+func (r *Recorder) CancelSeries(id string) error {
+	return r.store.DeleteSeriesTimer(id)
+}
+
+// SeriesTimers returns all series timers.
+func (r *Recorder) SeriesTimers() []*store.SeriesTimer {
+	all, err := r.store.ListSeriesTimers()
+	if err != nil {
+		return nil
+	}
+	return all
+}
+
+// loop periodically starts due recordings, expires missed ones, and expands
+// series timers into concrete recordings.
 func (r *Recorder) loop() {
-	t := time.NewTicker(5 * time.Second)
-	defer t.Stop()
+	tick := time.NewTicker(5 * time.Second)
+	series := time.NewTicker(60 * time.Second)
+	defer tick.Stop()
+	defer series.Stop()
+	r.expandSeries() // once at startup
 	for {
 		select {
 		case <-r.stop:
 			return
-		case <-t.C:
+		case <-tick.C:
 			r.tick()
+		case <-series.C:
+			r.expandSeries()
 		}
 	}
 }
@@ -211,6 +280,61 @@ func (r *Recorder) tick() {
 			r.maybeStart(rec)
 		}
 	}
+}
+
+// expandSeries turns each series timer's matching upcoming airings into
+// one-off recordings, deduped by program id against existing recordings.
+func (r *Recorder) expandSeries() {
+	r.mu.Lock()
+	programs := r.programs
+	r.mu.Unlock()
+	if programs == nil {
+		return
+	}
+	timers, err := r.store.ListSeriesTimers()
+	if err != nil || len(timers) == 0 {
+		return
+	}
+
+	now := time.Now()
+	airings := programs(now, now.Add(14*24*time.Hour))
+
+	// Program ids already covered by a recording.
+	recorded := map[string]bool{}
+	for _, rec := range r.filter(func(*store.Recording) bool { return true }) {
+		if rec.ProgramID != "" {
+			recorded[rec.ProgramID] = true
+		}
+	}
+
+	for _, st := range timers {
+		want := normalizeTitle(st.Name)
+		for _, a := range airings {
+			if a.Stop.Before(now) || a.ProgramID == "" || recorded[a.ProgramID] {
+				continue
+			}
+			if !st.RecordAnyChannel && st.ChannelID != "" && a.ChannelID != st.ChannelID {
+				continue
+			}
+			if !titleMatches(normalizeTitle(a.Title), want) {
+				continue
+			}
+			rec, err := r.scheduleFromAiring(st, a)
+			if err == nil && rec != nil {
+				recorded[a.ProgramID] = true
+			}
+		}
+	}
+}
+
+func (r *Recorder) scheduleFromAiring(st *store.SeriesTimer, a Airing) (*store.Recording, error) {
+	rec, err := r.Schedule(a.ChannelID, a.ChannelName, a.ProgramID, a.Title, a.Start, a.Stop)
+	if err != nil {
+		return nil, err
+	}
+	rec.SeriesTimerID = st.ID
+	_ = r.store.UpdateRecording(rec)
+	return rec, nil
 }
 
 // resume re-establishes state after a restart.
@@ -316,4 +440,44 @@ func captureArgs(input, path string, duration time.Duration) []string {
 func hasParentEscape(rel string) bool {
 	return rel == ".." ||
 		len(rel) >= 3 && rel[:3] == ".."+string(filepath.Separator)
+}
+
+// normalizeTitle lowercases a program/series title and collapses it to a
+// canonical form (alphanumeric runs joined by single spaces) so that cosmetic
+// differences in guide data — punctuation, casing, spacing — don't defeat a
+// series-timer match.
+func normalizeTitle(s string) string {
+	var b []rune
+	prevSpace := true // trim leading space
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b = append(b, r)
+			prevSpace = false
+		default:
+			if !prevSpace {
+				b = append(b, ' ')
+				prevSpace = true
+			}
+		}
+	}
+	out := string(b)
+	if n := len(out); n > 0 && out[n-1] == ' ' {
+		out = out[:n-1]
+	}
+	return out
+}
+
+// titleMatches reports whether a normalized airing title corresponds to the
+// normalized series-timer name. Equality is the common case; we also accept the
+// airing title starting with the series name (e.g. "the show s02e01") so that
+// episode suffixes in some guides still match.
+func titleMatches(airing, series string) bool {
+	if series == "" || airing == "" {
+		return false
+	}
+	if airing == series {
+		return true
+	}
+	return strings.HasPrefix(airing, series+" ")
 }

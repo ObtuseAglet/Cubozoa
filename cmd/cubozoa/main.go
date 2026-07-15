@@ -145,6 +145,27 @@ func run(log *slog.Logger) error {
 
 		// DVR needs ffmpeg to capture; enable it alongside Live TV when present.
 		if rec, ok := dvr.New(st, cfg.FFmpegPath, filepath.Join(cfg.DataDir, "recordings"), ltv, log); ok {
+			// Feed the recorder upcoming airings so series timers can expand into
+			// concrete recordings. Channel names are resolved server-side.
+			rec.SetProgramSource(func(from, to time.Time) []dvr.Airing {
+				entries := ltv.Programs(nil, from, to)
+				out := make([]dvr.Airing, 0, len(entries))
+				for _, e := range entries {
+					chName := ""
+					if ch, ok := ltv.Channel(e.ChannelID); ok {
+						chName = ch.Name
+					}
+					out = append(out, dvr.Airing{
+						ProgramID:   e.ID,
+						ChannelID:   e.ChannelID,
+						ChannelName: chName,
+						Title:       e.Title,
+						Start:       e.Start,
+						Stop:        e.Stop,
+					})
+				}
+				return out
+			})
 			rec.Start()
 			srv.SetRecorder(rec)
 			defer rec.Close()

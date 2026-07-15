@@ -17,27 +17,29 @@ import (
 // atomically (write-temp-then-rename) so a crash cannot leave a half-written
 // datastore.
 type jsonStore struct {
-	mu         sync.RWMutex
-	path       string
-	serverID   string
-	users      map[string]*User // keyed by user ID
-	sessions   map[string]*Session
-	libraries  map[string]*Library      // keyed by library ID
-	items      map[string]*MediaItem    // keyed by item ID
-	userData   map[string]*UserItemData // keyed by userID + "\x00" + itemID
-	recordings map[string]*Recording
+	mu           sync.RWMutex
+	path         string
+	serverID     string
+	users        map[string]*User // keyed by user ID
+	sessions     map[string]*Session
+	libraries    map[string]*Library      // keyed by library ID
+	items        map[string]*MediaItem    // keyed by item ID
+	userData     map[string]*UserItemData // keyed by userID + "\x00" + itemID
+	recordings   map[string]*Recording
+	seriesTimers map[string]*SeriesTimer
 }
 
 // persisted is the on-disk schema. Versioned so future migrations are possible.
 type persisted struct {
-	Version    int                      `json:"version"`
-	ServerID   string                   `json:"server_id"`
-	Users      map[string]*User         `json:"users"`
-	Sessions   map[string]*Session      `json:"sessions"`
-	Libraries  map[string]*Library      `json:"libraries"`
-	Items      map[string]*MediaItem    `json:"items"`
-	UserData   map[string]*UserItemData `json:"user_data"`
-	Recordings map[string]*Recording    `json:"recordings"`
+	Version      int                      `json:"version"`
+	ServerID     string                   `json:"server_id"`
+	Users        map[string]*User         `json:"users"`
+	Sessions     map[string]*Session      `json:"sessions"`
+	Libraries    map[string]*Library      `json:"libraries"`
+	Items        map[string]*MediaItem    `json:"items"`
+	UserData     map[string]*UserItemData `json:"user_data"`
+	Recordings   map[string]*Recording    `json:"recordings"`
+	SeriesTimers map[string]*SeriesTimer  `json:"series_timers"`
 }
 
 // userDataKey composes the map key for a user/item pair.
@@ -54,13 +56,14 @@ func OpenJSON(dataDir string) (Store, error) {
 	}
 
 	s := &jsonStore{
-		path:       filepath.Join(dataDir, "cubozoa.json"),
-		users:      make(map[string]*User),
-		sessions:   make(map[string]*Session),
-		libraries:  make(map[string]*Library),
-		items:      make(map[string]*MediaItem),
-		userData:   make(map[string]*UserItemData),
-		recordings: make(map[string]*Recording),
+		path:         filepath.Join(dataDir, "cubozoa.json"),
+		users:        make(map[string]*User),
+		sessions:     make(map[string]*Session),
+		libraries:    make(map[string]*Library),
+		items:        make(map[string]*MediaItem),
+		userData:     make(map[string]*UserItemData),
+		recordings:   make(map[string]*Recording),
+		seriesTimers: make(map[string]*SeriesTimer),
 	}
 
 	if err := s.load(); err != nil {
@@ -114,6 +117,9 @@ func (s *jsonStore) load() error {
 	if p.Recordings != nil {
 		s.recordings = p.Recordings
 	}
+	if p.SeriesTimers != nil {
+		s.seriesTimers = p.SeriesTimers
+	}
 	return nil
 }
 
@@ -121,14 +127,15 @@ func (s *jsonStore) load() error {
 // the write lock.
 func (s *jsonStore) flushLocked() error {
 	p := persisted{
-		Version:    schemaVersion,
-		ServerID:   s.serverID,
-		Users:      s.users,
-		Sessions:   s.sessions,
-		Libraries:  s.libraries,
-		Items:      s.items,
-		UserData:   s.userData,
-		Recordings: s.recordings,
+		Version:      schemaVersion,
+		ServerID:     s.serverID,
+		Users:        s.users,
+		Sessions:     s.sessions,
+		Libraries:    s.libraries,
+		Items:        s.items,
+		UserData:     s.userData,
+		Recordings:   s.recordings,
+		SeriesTimers: s.seriesTimers,
 	}
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
@@ -473,6 +480,46 @@ func (s *jsonStore) DeleteRecording(id string) error {
 		return ErrNotFound
 	}
 	delete(s.recordings, id)
+	return s.flushLocked()
+}
+
+func (s *jsonStore) CreateSeriesTimer(st *SeriesTimer) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	clone := *st
+	s.seriesTimers[st.ID] = &clone
+	return s.flushLocked()
+}
+
+func (s *jsonStore) GetSeriesTimer(id string) (*SeriesTimer, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	st, ok := s.seriesTimers[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	clone := *st
+	return &clone, nil
+}
+
+func (s *jsonStore) ListSeriesTimers() ([]*SeriesTimer, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*SeriesTimer, 0, len(s.seriesTimers))
+	for _, st := range s.seriesTimers {
+		clone := *st
+		out = append(out, &clone)
+	}
+	return out, nil
+}
+
+func (s *jsonStore) DeleteSeriesTimer(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.seriesTimers[id]; !ok {
+		return ErrNotFound
+	}
+	delete(s.seriesTimers, id)
 	return s.flushLocked()
 }
 

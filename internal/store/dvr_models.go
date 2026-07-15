@@ -16,6 +16,20 @@ type Recording struct {
 	EndAt       time.Time `json:"end_at"`
 	Status      string    `json:"status"` // scheduled|recording|completed|failed|cancelled
 	CreatedAt   time.Time `json:"created_at"`
+
+	// SeriesTimerID links a recording auto-created by a series timer back to it.
+	SeriesTimerID string `json:"series_timer_id,omitempty"`
+}
+
+// SeriesTimer records every upcoming airing whose title matches, optionally
+// limited to one channel.
+type SeriesTimer struct {
+	ID               string    `json:"id"`
+	ChannelID        string    `json:"channel_id,omitempty"` // empty when RecordAnyChannel
+	ChannelName      string    `json:"channel_name,omitempty"`
+	Name             string    `json:"name"` // program/series title to match
+	RecordAnyChannel bool      `json:"record_any_channel,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
 }
 
 // Recording status values.

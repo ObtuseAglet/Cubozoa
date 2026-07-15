@@ -43,3 +43,23 @@ type CreateTimerRequest struct {
 	StartDate string `json:"StartDate"`
 	EndDate   string `json:"EndDate"`
 }
+
+// SeriesTimerInfoDto describes a recurring (series) DVR timer.
+type SeriesTimerInfoDto struct {
+	ID               string `json:"Id"`
+	Type             string `json:"Type"`
+	ServerID         string `json:"ServerId"`
+	ChannelID        string `json:"ChannelId,omitempty"`
+	ChannelName      string `json:"ChannelName,omitempty"`
+	Name             string `json:"Name"`
+	RecordAnyChannel bool   `json:"RecordAnyChannel"`
+	RecordAnyTime    bool   `json:"RecordAnyTime"`
+}
+
+// CreateSeriesTimerRequest is the POST /LiveTv/SeriesTimers body.
+type CreateSeriesTimerRequest struct {
+	ChannelID        string `json:"ChannelId"`
+	ProgramID        string `json:"ProgramId"`
+	Name             string `json:"Name"`
+	RecordAnyChannel bool   `json:"RecordAnyChannel"`
+}

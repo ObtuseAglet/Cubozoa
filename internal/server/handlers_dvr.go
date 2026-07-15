@@ -147,6 +147,89 @@ func (s *Server) handleCancelTimer(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) seriesTimerToDto(st *store.SeriesTimer) jellyfin.SeriesTimerInfoDto {
+	return jellyfin.SeriesTimerInfoDto{
+		ID:               st.ID,
+		Type:             "SeriesTimer",
+		ServerID:         s.store.ServerID(),
+		ChannelID:        st.ChannelID,
+		ChannelName:      st.ChannelName,
+		Name:             st.Name,
+		RecordAnyChannel: st.RecordAnyChannel,
+		RecordAnyTime:    true,
+	}
+}
+
+// POST /LiveTv/SeriesTimers — record every matching airing of a program.
+func (s *Server) handleCreateSeriesTimer(w http.ResponseWriter, r *http.Request) {
+	if s.recorder == nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	var req jellyfin.CreateSeriesTimerRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&req); err != nil {
+		s.writeError(w, http.StatusBadRequest)
+		return
+	}
+
+	name, chName := req.Name, ""
+	channelID := req.ChannelID
+	if req.RecordAnyChannel {
+		channelID = ""
+	} else if channelID != "" && s.liveTV != nil {
+		if ch, ok := s.liveTV.Channel(channelID); ok {
+			chName = ch.Name
+			if name == "" {
+				name = ch.Name
+			}
+		} else {
+			s.writeError(w, http.StatusNotFound)
+			return
+		}
+	}
+	if name == "" {
+		s.writeError(w, http.StatusBadRequest)
+		return
+	}
+
+	st, err := s.recorder.ScheduleSeries(channelID, chName, name, req.RecordAnyChannel)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, s.seriesTimerToDto(st))
+}
+
+// GET /LiveTv/SeriesTimers — configured series timers.
+func (s *Server) handleSeriesTimers(w http.ResponseWriter, r *http.Request) {
+	if s.recorder == nil {
+		s.writeJSON(w, http.StatusOK, jellyfin.QueryResult[jellyfin.SeriesTimerInfoDto]{Items: []jellyfin.SeriesTimerInfoDto{}})
+		return
+	}
+	timers := s.recorder.SeriesTimers()
+	items := make([]jellyfin.SeriesTimerInfoDto, 0, len(timers))
+	for _, st := range timers {
+		items = append(items, s.seriesTimerToDto(st))
+	}
+	s.writeJSON(w, http.StatusOK, jellyfin.QueryResult[jellyfin.SeriesTimerInfoDto]{
+		Items:            items,
+		TotalRecordCount: len(items),
+	})
+}
+
+// DELETE /LiveTv/SeriesTimers/{id} — remove a series timer.
+func (s *Server) handleCancelSeriesTimer(w http.ResponseWriter, r *http.Request) {
+	if s.recorder == nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	if err := s.recorder.CancelSeries(r.PathValue("id")); err != nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GET /LiveTv/Recordings — completed recordings, playable like items.
 func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 	if s.recorder == nil {

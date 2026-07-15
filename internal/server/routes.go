@@ -97,7 +97,9 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("GET /LiveTv/Timers", s.requireAuth(s.handleTimers))
 	mux.HandleFunc("POST /LiveTv/Timers", s.requireAuth(s.handleCreateTimer))
 	mux.HandleFunc("DELETE /LiveTv/Timers/{id}", s.requireAuth(s.handleCancelTimer))
-	mux.HandleFunc("GET /LiveTv/SeriesTimers", s.requireAuth(s.handleLiveTvEmpty))
+	mux.HandleFunc("GET /LiveTv/SeriesTimers", s.requireAuth(s.handleSeriesTimers))
+	mux.HandleFunc("POST /LiveTv/SeriesTimers", s.requireAuth(s.handleCreateSeriesTimer))
+	mux.HandleFunc("DELETE /LiveTv/SeriesTimers/{id}", s.requireAuth(s.handleCancelSeriesTimer))
 
 	// --- Display preferences (authenticated) ---
 	mux.HandleFunc("GET /DisplayPreferences/{id}", s.requireAuth(s.handleGetDisplayPreferences))

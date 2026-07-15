@@ -139,3 +139,51 @@ func TestDVRRecordThenPlay(t *testing.T) {
 	}
 	_ = strings.TrimSpace
 }
+
+func TestSeriesTimerLifecycle(t *testing.T) {
+	ts, token, chID := newDVRServer(t)
+
+	// Create a series timer scoped to the channel.
+	body := `{"ChannelId":"` + chID + `","Name":"My Series","RecordAnyChannel":false}`
+	var st jellyfin.SeriesTimerInfoDto
+	if code := post(t, ts.URL+"/LiveTv/SeriesTimers", token, body, &st); code != http.StatusOK {
+		t.Fatalf("create series timer status = %d", code)
+	}
+	if st.Type != "SeriesTimer" || st.Name != "My Series" || st.ChannelID != chID {
+		t.Fatalf("unexpected series timer: %+v", st)
+	}
+
+	// It is listed.
+	var list jellyfin.QueryResult[jellyfin.SeriesTimerInfoDto]
+	authReq(t, http.MethodGet, ts.URL+"/LiveTv/SeriesTimers", token, &list)
+	if list.TotalRecordCount != 1 || list.Items[0].ID != st.ID {
+		t.Fatalf("expected 1 series timer, got %+v", list)
+	}
+
+	// Delete it.
+	req, _ := http.NewRequest(http.MethodDelete, ts.URL+"/LiveTv/SeriesTimers/"+st.ID, nil)
+	req.Header.Set("X-Emby-Token", token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("delete series timer status = %d", resp.StatusCode)
+	}
+
+	authReq(t, http.MethodGet, ts.URL+"/LiveTv/SeriesTimers", token, &list)
+	if list.TotalRecordCount != 0 {
+		t.Fatalf("series timer should be gone, got %d", list.TotalRecordCount)
+	}
+}
+
+func TestCreateSeriesTimerRequiresName(t *testing.T) {
+	ts, token, _ := newDVRServer(t)
+	// RecordAnyChannel with no name → 400.
+	body := `{"RecordAnyChannel":true,"Name":""}`
+	var st jellyfin.SeriesTimerInfoDto
+	if code := post(t, ts.URL+"/LiveTv/SeriesTimers", token, body, &st); code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for empty name, got %d", code)
+	}
+}

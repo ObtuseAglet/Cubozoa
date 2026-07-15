@@ -120,7 +120,12 @@ to a normalized display-name match (`livetv/match.go`, built from the XMLTV
 `CUBOZOA_DATA_DIR/recordings` via ffmpeg on a schedule (persisted timers that
 resume after restart); `/LiveTv/Timers` (POST/GET/DELETE) and `/LiveTv/Recordings`
 back the client's DVR, and completed recordings play through recording-aware
-PlaybackInfo + `/Videos/{id}/stream`.
+PlaybackInfo + `/Videos/{id}/stream`. Series (recurring) timers
+(`/LiveTv/SeriesTimers`, POST/GET/DELETE) match upcoming guide airings by
+normalized title (optionally on one channel or `RecordAnyChannel`) and expand
+into one-off recordings, deduped by program id; the recorder pulls upcoming
+airings from the Live TV guide via a `dvr.ProgramSource` adapter wired in
+`main.go`.
 
 Adaptive (multi-bitrate) HLS is in: `/Videos/{id}/master.m3u8` returns an ABR
 master playlist whose rungs come from `transcode.SelectRenditions(width,height,

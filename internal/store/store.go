@@ -63,6 +63,12 @@ type Store interface {
 	UpdateRecording(rec *Recording) error
 	DeleteRecording(id string) error
 
+	// DVR series timers
+	CreateSeriesTimer(st *SeriesTimer) error
+	GetSeriesTimer(id string) (*SeriesTimer, error)
+	ListSeriesTimers() ([]*SeriesTimer, error)
+	DeleteSeriesTimer(id string) error
+
 	// Close flushes and releases any resources held by the store.
 	Close() error
 }
