@@ -31,6 +31,7 @@ type Service struct {
 	channels      []Channel
 	byID          map[string]Channel
 	programsByTvg map[string][]Program
+	nameIndex     map[string]string // normalized display name -> guide channel id
 	guideStart    time.Time
 	guideEnd      time.Time
 	loadedAt      time.Time
@@ -130,6 +131,7 @@ func NewService(playlist string, refresh time.Duration, log *slog.Logger) (*Serv
 		client:        &http.Client{Timeout: 30 * time.Second},
 		byID:          map[string]Channel{},
 		programsByTvg: map[string][]Program{},
+		nameIndex:     map[string]string{},
 		stop:          make(chan struct{}),
 	}, true
 }
@@ -183,13 +185,14 @@ func (s *Service) reload(ctx context.Context) error {
 			s.log.Info("using EPG advertised by playlist", "url", headerURL)
 		}
 	}
-	programs, gStart, gEnd := s.loadGuide(ctx, sources)
+	guide := s.loadGuide(ctx, sources)
 
 	s.mu.Lock()
 	s.channels = channels
 	s.byID = byID
-	s.programsByTvg = programs
-	s.guideStart, s.guideEnd = gStart, gEnd
+	s.programsByTvg = guide.byTvg
+	s.nameIndex = guide.nameIndex
+	s.guideStart, s.guideEnd = guide.start, guide.end
 	s.loadedAt = time.Now()
 	s.mu.Unlock()
 
@@ -197,28 +200,39 @@ func (s *Service) reload(ctx context.Context) error {
 	return nil
 }
 
-// loadGuide fetches and parses each EPG source, merging all programs.
-func (s *Service) loadGuide(ctx context.Context, sources []string) (map[string][]Program, time.Time, time.Time) {
+// guideData is the parsed result of one or more EPG sources.
+type guideData struct {
+	byTvg     map[string][]Program
+	nameIndex map[string]string // normalized display name -> guide channel id
+	start     time.Time
+	end       time.Time
+}
+
+// loadGuide fetches and parses each EPG source, merging all programs and
+// building a name index for channels the playlist can't match by tvg-id.
+func (s *Service) loadGuide(ctx context.Context, sources []string) guideData {
 	var all []Program
+	var chans []guideChannel
 	for _, src := range sources {
 		data, err := s.fetch(ctx, src)
 		if err != nil {
 			s.log.Warn("loading EPG failed", "src", src, "err", err)
 			continue
 		}
-		progs, err := ParseXMLTV(data)
+		progs, channels, err := parseGuide(data)
 		if err != nil {
 			s.log.Warn("parsing EPG failed", "src", src, "err", err)
 			continue
 		}
 		all = append(all, progs...)
+		chans = append(chans, channels...)
 	}
 	if len(all) == 0 {
-		return map[string][]Program{}, time.Time{}, time.Time{}
+		return guideData{byTvg: map[string][]Program{}, nameIndex: map[string]string{}}
 	}
 	byTvg, start, end := groupPrograms(all)
-	s.log.Info("loaded EPG", "programs", len(all), "sources", len(sources))
-	return byTvg, start, end
+	s.log.Info("loaded EPG", "programs", len(all), "channels", len(chans), "sources", len(sources))
+	return guideData{byTvg: byTvg, nameIndex: buildNameIndex(chans), start: start, end: end}
 }
 
 // splitSources splits a comma-separated list of non-empty, trimmed sources.
@@ -271,10 +285,11 @@ func (s *Service) Programs(channelIDs []string, from, to time.Time) []GuideEntry
 
 	var out []GuideEntry
 	for _, ch := range targets {
-		if ch.TvgID == "" {
+		tvg := s.resolveTvgIDLocked(ch)
+		if tvg == "" {
 			continue
 		}
-		for _, p := range s.programsByTvg[ch.TvgID] {
+		for _, p := range s.programsByTvg[tvg] {
 			if p.Stop.After(from) && p.Start.Before(to) {
 				out = append(out, GuideEntry{ChannelID: ch.ID, Program: p})
 			}
@@ -284,16 +299,35 @@ func (s *Service) Programs(channelIDs []string, from, to time.Time) []GuideEntry
 	return out
 }
 
+// resolveTvgIDLocked returns the guide channel id that supplies programs for a
+// playlist channel: its tvg-id when the guide has it, else a name match. Callers
+// must hold at least the read lock.
+func (s *Service) resolveTvgIDLocked(ch Channel) string {
+	if ch.TvgID != "" {
+		if _, ok := s.programsByTvg[ch.TvgID]; ok {
+			return ch.TvgID
+		}
+	}
+	if id, ok := s.nameIndex[normalizeChannelName(ch.Name)]; ok {
+		return id
+	}
+	return ch.TvgID
+}
+
 // CurrentProgram returns the program airing on a channel at time `at`, if the
 // EPG has one.
 func (s *Service) CurrentProgram(channelID string, at time.Time) (GuideEntry, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	ch, ok := s.byID[channelID]
-	if !ok || ch.TvgID == "" {
+	if !ok {
 		return GuideEntry{}, false
 	}
-	for _, p := range s.programsByTvg[ch.TvgID] {
+	tvg := s.resolveTvgIDLocked(ch)
+	if tvg == "" {
+		return GuideEntry{}, false
+	}
+	for _, p := range s.programsByTvg[tvg] {
 		if !p.Start.After(at) && p.Stop.After(at) {
 			return GuideEntry{ChannelID: ch.ID, Program: p}, true
 		}

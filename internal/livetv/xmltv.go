@@ -20,9 +20,22 @@ type Program struct {
 	Stop         time.Time
 }
 
+// guideChannel is an XMLTV <channel> with its display name(s), used to match
+// playlist channels to the guide by name when tvg-id does not line up.
+type guideChannel struct {
+	ID    string
+	Names []string
+}
+
 // xmltv mirrors the parts of the XMLTV schema Cubozoa reads.
 type xmltvDoc struct {
+	Channels   []xmltvChannel   `xml:"channel"`
 	Programmes []xmltvProgramme `xml:"programme"`
+}
+
+type xmltvChannel struct {
+	ID           string   `xml:"id,attr"`
+	DisplayNames []string `xml:"display-name"`
 }
 
 type xmltvProgramme struct {
@@ -37,10 +50,31 @@ type xmltvProgramme struct {
 // ParseXMLTV parses an XMLTV guide into programs. Entries with an unparseable
 // time or empty channel are skipped rather than failing the whole guide.
 func ParseXMLTV(data []byte) ([]Program, error) {
+	progs, _, err := parseGuide(data)
+	return progs, err
+}
+
+// parseGuide parses both the programmes and the channel display names.
+func parseGuide(data []byte) ([]Program, []guideChannel, error) {
 	var doc xmltvDoc
 	if err := xml.Unmarshal(data, &doc); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+
+	channels := make([]guideChannel, 0, len(doc.Channels))
+	for _, c := range doc.Channels {
+		if c.ID == "" {
+			continue
+		}
+		names := make([]string, 0, len(c.DisplayNames))
+		for _, n := range c.DisplayNames {
+			if n = strings.TrimSpace(n); n != "" {
+				names = append(names, n)
+			}
+		}
+		channels = append(channels, guideChannel{ID: c.ID, Names: names})
+	}
+
 	out := make([]Program, 0, len(doc.Programmes))
 	for _, p := range doc.Programmes {
 		if p.Channel == "" {
@@ -65,7 +99,7 @@ func ParseXMLTV(data []byte) ([]Program, error) {
 			Stop:         stop,
 		})
 	}
-	return out, nil
+	return out, channels, nil
 }
 
 // parseXMLTVTime parses "20060102150405 -0700" or "20060102150405" (assumed UTC).

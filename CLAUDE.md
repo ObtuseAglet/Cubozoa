@@ -114,7 +114,9 @@ server-side by channel ID (never client-supplied). Channel logos are proxied +
 cached from the `tvg-logo` URL via the item image endpoint. EPG acquisition is
 robust: gzip is decompressed transparently, comma-separated `CUBOZOA_IPTV_EPG`
 sources are merged, and the guide auto-discovers from the playlist header's
-`url-tvg` when unset. DVR (`internal/dvr`) records channels to
+`url-tvg` when unset. Channels join the guide by `tvg-id` first, then fall back
+to a normalized display-name match (`livetv/match.go`, built from the XMLTV
+`<channel><display-name>` entries) so messy playlists still get a guide. DVR (`internal/dvr`) records channels to
 `CUBOZOA_DATA_DIR/recordings` via ffmpeg on a schedule (persisted timers that
 resume after restart); `/LiveTv/Timers` (POST/GET/DELETE) and `/LiveTv/Recordings`
 back the client's DVR, and completed recordings play through recording-aware
