@@ -127,6 +127,7 @@ func run(log *slog.Logger) error {
 		if cfg.IPTVGuide != "" {
 			ltv.SetGuide(cfg.IPTVGuide)
 		}
+		ltv.SetLogoCache(filepath.Join(cfg.DataDir, "livetv-logos"))
 		ltv.Start(context.Background())
 		srv.SetLiveTV(ltv)
 		defer ltv.Close()

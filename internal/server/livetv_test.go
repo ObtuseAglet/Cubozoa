@@ -228,6 +228,60 @@ func TestLiveTvCurrentProgramOnChannel(t *testing.T) {
 	}
 }
 
+func TestChannelLogoProxied(t *testing.T) {
+	// A "logo host" serving PNG bytes; the channel's tvg-logo points at it.
+	logoHost := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		w.Write([]byte("\x89PNG\r\n\x1a\nfake-logo-bytes"))
+	}))
+	t.Cleanup(logoHost.Close)
+
+	m3u := filepath.Join(t.TempDir(), "channels.m3u")
+	os.WriteFile(m3u, []byte("#EXTM3U\n#EXTINF:-1 tvg-id=\"x.tv\" tvg-logo=\""+logoHost.URL+"/logo.png\",Logo Channel\nhttp://up/x.ts\n"), 0o644)
+
+	st, _ := store.OpenJSON(t.TempDir())
+	t.Cleanup(func() { st.Close() })
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	authSvc := auth.New(st, log)
+	authSvc.SeedAdmin("admin", "logo-pass-1")
+	srv := New(&config.Config{ServerName: "Test"}, st, authSvc, media.NewService(st, log), userdata.New(st), log)
+	ltv, _ := livetv.NewService(m3u, time.Hour, log)
+	ltv.SetLogoCache(filepath.Join(t.TempDir(), "logos"))
+	ltv.Start(context.Background())
+	t.Cleanup(ltv.Close)
+	srv.SetLiveTV(ltv)
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	token, _ := login(t, ts.URL, "admin", "logo-pass-1")
+
+	var chans jellyfin.QueryResult[jellyfin.BaseItemDto]
+	authReq(t, http.MethodGet, ts.URL+"/LiveTv/Channels", token, &chans)
+	ch := chans.Items[0]
+	if ch.ImageTags["Primary"] == "" {
+		t.Fatalf("channel should advertise a Primary image tag: %+v", ch)
+	}
+
+	// The logo is fetched from the upstream and served through the item image
+	// endpoint (twice, to exercise the cache).
+	for i := 0; i < 2; i++ {
+		resp, err := http.Get(ts.URL + "/Items/" + ch.ID + "/Images/Primary?api_key=" + token)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("logo status = %d", resp.StatusCode)
+		}
+		if ct := resp.Header.Get("Content-Type"); ct != "image/png" {
+			t.Fatalf("logo content-type = %q", ct)
+		}
+		if !strings.Contains(string(body), "fake-logo-bytes") {
+			t.Fatalf("logo body wrong: %q", body)
+		}
+	}
+}
+
 func TestLiveTvRequiresAuth(t *testing.T) {
 	ts, _ := newLiveTVServer(t)
 	resp, err := http.Get(ts.URL + "/LiveTv/Channels")

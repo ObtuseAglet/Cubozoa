@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -21,7 +22,8 @@ type Service struct {
 	log      *slog.Logger
 	client   *http.Client
 
-	guide string // optional XMLTV source (URL or path)
+	guide   string // optional XMLTV source (URL or path)
+	logoDir string // cache dir for downloaded channel logos ("" disables)
 
 	mu            sync.RWMutex
 	channels      []Channel
@@ -43,6 +45,72 @@ type GuideEntry struct {
 // SetGuide configures an optional XMLTV EPG source, loaded alongside the
 // playlist on the next refresh.
 func (s *Service) SetGuide(src string) { s.guide = strings.TrimSpace(src) }
+
+// SetLogoCache enables downloading and caching channel logos under dir.
+func (s *Service) SetLogoCache(dir string) {
+	s.logoDir = dir
+	if dir != "" {
+		_ = os.MkdirAll(dir, 0o700)
+	}
+}
+
+// LogoPath returns a local, cached copy of a channel's logo, downloading it on
+// first use. It returns ok=false when the channel has no logo, caching is
+// disabled, or the download fails.
+func (s *Service) LogoPath(ctx context.Context, channelID string) (path, contentType string, ok bool) {
+	c, found := s.Channel(channelID)
+	if !found || c.Logo == "" || s.logoDir == "" {
+		return "", "", false
+	}
+	ext := logoExt(c.Logo)
+	dest := filepath.Join(s.logoDir, channelID+ext)
+	if fi, err := os.Stat(dest); err == nil && fi.Size() > 0 {
+		return dest, logoContentType(ext), true
+	}
+
+	data, err := s.fetch(ctx, c.Logo)
+	if err != nil || len(data) == 0 {
+		return "", "", false
+	}
+	if len(data) > 8<<20 { // 8 MiB cap for a logo
+		return "", "", false
+	}
+	tmp := dest + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return "", "", false
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		return "", "", false
+	}
+	return dest, logoContentType(ext), true
+}
+
+func logoExt(u string) string {
+	u = strings.SplitN(u, "?", 2)[0]
+	switch {
+	case strings.HasSuffix(strings.ToLower(u), ".png"):
+		return ".png"
+	case strings.HasSuffix(strings.ToLower(u), ".webp"):
+		return ".webp"
+	case strings.HasSuffix(strings.ToLower(u), ".gif"):
+		return ".gif"
+	default:
+		return ".jpg"
+	}
+}
+
+func logoContentType(ext string) string {
+	switch ext {
+	case ".png":
+		return "image/png"
+	case ".webp":
+		return "image/webp"
+	case ".gif":
+		return "image/gif"
+	default:
+		return "image/jpeg"
+	}
+}
 
 // NewService constructs a Live TV service for the given M3U source. It returns
 // ok=false when no playlist is configured (Live TV stays disabled).

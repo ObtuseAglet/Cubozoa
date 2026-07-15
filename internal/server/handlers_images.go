@@ -25,6 +25,11 @@ func (s *Server) handleItemImage(w http.ResponseWriter, r *http.Request) {
 
 	img, err := s.media.ItemImage(itemID, imageType)
 	if err != nil {
+		// A Live TV channel logo is not a library item — serve it (cached from
+		// the upstream tvg-logo URL) before giving up.
+		if (errors.Is(err, media.ErrNoImage) || errors.Is(err, store.ErrNotFound)) && s.serveChannelLogo(w, r, itemID) {
+			return
+		}
 		if errors.Is(err, media.ErrNoImage) || errors.Is(err, store.ErrNotFound) {
 			s.writeError(w, http.StatusNotFound)
 			return
@@ -58,4 +63,30 @@ func (s *Server) handleItemImage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
+}
+
+// serveChannelLogo serves a Live TV channel's logo if the id is a channel with a
+// cached/available logo, returning whether it handled the request.
+func (s *Server) serveChannelLogo(w http.ResponseWriter, r *http.Request, channelID string) bool {
+	if s.liveTV == nil {
+		return false
+	}
+	path, contentType, ok := s.liveTV.LogoPath(r.Context(), channelID)
+	if !ok {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || info.IsDir() {
+		return false
+	}
+	h := w.Header()
+	h.Set("Content-Type", contentType)
+	h.Set("Cache-Control", "private, max-age=86400")
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
+	return true
 }
