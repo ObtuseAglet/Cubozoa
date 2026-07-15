@@ -115,6 +115,7 @@ All configuration is via environment variables; every one has a safe default.
 | `CUBOZOA_LOCKOUT_THRESHOLD` / `CUBOZOA_LOCKOUT_MINUTES` | `5` / `15` | Failed logins before an account locks, and the cool-off window. `0` disables lockout. |
 | `CUBOZOA_IPTV_M3U` | _(empty)_ | M3U playlist (URL or path) whose channels are exposed as Live TV. Empty disables Live TV. |
 | `CUBOZOA_IPTV_EPG` | _(auto)_ | XMLTV guide(s) for the program guide — comma-separated URLs/paths, `.gz` supported. If unset, the guide advertised in the playlist's `url-tvg` header is used automatically. |
+| `CUBOZOA_IPTV_EPG_ALIASES` | _(empty)_ | JSON file mapping `"Channel Name": "guide.tvg.id"` — an operator override for channels that neither `tvg-id` nor name-matching join to the guide. |
 | `CUBOZOA_IPTV_REFRESH_HOURS` | `12` | How often the IPTV playlist and EPG are reloaded. |
 
 ## Architecture

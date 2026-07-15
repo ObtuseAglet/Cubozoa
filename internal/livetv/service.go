@@ -27,6 +27,8 @@ type Service struct {
 	guide   string // optional XMLTV source (URL or path)
 	logoDir string // cache dir for downloaded channel logos ("" disables)
 
+	aliases map[string]string // normalized channel name -> guide tvg-id (operator override)
+
 	mu            sync.RWMutex
 	channels      []Channel
 	byID          map[string]Channel
@@ -48,6 +50,20 @@ type GuideEntry struct {
 // SetGuide configures an optional XMLTV EPG source, loaded alongside the
 // playlist on the next refresh.
 func (s *Service) SetGuide(src string) { s.guide = strings.TrimSpace(src) }
+
+// SetAliases installs operator overrides mapping a channel name to a guide
+// tvg-id. Keys are normalized so quality-tag variants ("BBC One HD") match.
+func (s *Service) SetAliases(aliases map[string]string) {
+	idx := make(map[string]string, len(aliases))
+	for name, tvg := range aliases {
+		if k := normalizeChannelName(name); k != "" && tvg != "" {
+			idx[k] = tvg
+		}
+	}
+	s.mu.Lock()
+	s.aliases = idx
+	s.mu.Unlock()
+}
 
 // SetLogoCache enables downloading and caching channel logos under dir.
 func (s *Service) SetLogoCache(dir string) {
@@ -303,12 +319,17 @@ func (s *Service) Programs(channelIDs []string, from, to time.Time) []GuideEntry
 // playlist channel: its tvg-id when the guide has it, else a name match. Callers
 // must hold at least the read lock.
 func (s *Service) resolveTvgIDLocked(ch Channel) string {
+	norm := normalizeChannelName(ch.Name)
+	// An operator alias is an explicit override and wins over everything.
+	if id, ok := s.aliases[norm]; ok {
+		return id
+	}
 	if ch.TvgID != "" {
 		if _, ok := s.programsByTvg[ch.TvgID]; ok {
 			return ch.TvgID
 		}
 	}
-	if id, ok := s.nameIndex[normalizeChannelName(ch.Name)]; ok {
+	if id, ok := s.nameIndex[norm]; ok {
 		return id
 	}
 	return ch.TvgID

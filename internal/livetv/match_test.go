@@ -74,6 +74,33 @@ func TestGuideMatchesByNameWhenTvgIdMismatched(t *testing.T) {
 	}
 }
 
+func TestAliasOverridesResolution(t *testing.T) {
+	// The guide's channel id is "aje.qa"; the playlist channel has an unrelated
+	// name and tvg-id, so only an operator alias can join them.
+	const guide = `<tv>
+	  <channel id="aje.qa"><display-name>Al Jazeera English</display-name></channel>
+	  <programme start="20240115180000 +0000" stop="20240115190000 +0000" channel="aje.qa"><title>Newshour</title></programme>
+	</tv>`
+	epg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(guide)) }))
+	defer epg.Close()
+	pl := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("#EXTM3U\n#EXTINF:-1 tvg-id=\"nomatch\",AJ Eng\nhttp://s/aj.ts\n"))
+	}))
+	defer pl.Close()
+
+	svc, _ := NewService(pl.URL+"/l.m3u", time.Hour, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	svc.SetGuide(epg.URL + "/g.xml")
+	svc.SetAliases(map[string]string{"AJ Eng": "aje.qa"}) // operator override
+	svc.reload(context.Background())
+	defer svc.Close()
+
+	chID := svc.Channels()[0].ID
+	progs := svc.Programs([]string{chID}, time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC), time.Date(2024, 1, 16, 0, 0, 0, 0, time.UTC))
+	if len(progs) != 1 || progs[0].Title != "Newshour" {
+		t.Fatalf("alias override did not resolve programs: %+v", progs)
+	}
+}
+
 func TestGuideDirectTvgIdStillWins(t *testing.T) {
 	const guide = `<tv>
 	  <channel id="a.tv"><display-name>Alpha</display-name></channel>

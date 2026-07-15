@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -129,6 +130,14 @@ func run(log *slog.Logger) error {
 			ltv.SetGuide(cfg.IPTVGuide)
 		}
 		ltv.SetLogoCache(filepath.Join(cfg.DataDir, "livetv-logos"))
+		if cfg.IPTVAliases != "" {
+			if aliases, err := loadAliases(cfg.IPTVAliases); err != nil {
+				log.Warn("loading EPG aliases failed", "file", cfg.IPTVAliases, "err", err)
+			} else {
+				ltv.SetAliases(aliases)
+				log.Info("loaded EPG aliases", "count", len(aliases))
+			}
+		}
 		ltv.Start(context.Background())
 		srv.SetLiveTV(ltv)
 		defer ltv.Close()
@@ -208,6 +217,19 @@ func openAuditWriter(path string) (io.Writer, func(), error) {
 		return nil, nil, fmt.Errorf("opening audit log: %w", err)
 	}
 	return f, func() { f.Close() }, nil
+}
+
+// loadAliases reads a JSON object mapping channel name -> guide tvg-id.
+func loadAliases(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var m map[string]string
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // newTMDb builds a TMDb metadata provider from configuration, applying any

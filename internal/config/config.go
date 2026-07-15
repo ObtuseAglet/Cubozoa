@@ -82,6 +82,11 @@ type Config struct {
 	IPTVPlaylist string
 	IPTVGuide    string
 	IPTVRefresh  time.Duration
+
+	// IPTVAliases is a JSON file mapping channel name -> guide tvg-id, an
+	// operator override for channels that neither tvg-id nor name-matching join
+	// to the guide correctly.
+	IPTVAliases string
 }
 
 // Load resolves configuration from the environment, applying defaults.
@@ -108,6 +113,7 @@ func Load() (*Config, error) {
 		IPTVPlaylist:     env("CUBOZOA_IPTV_M3U", ""),
 		IPTVGuide:        env("CUBOZOA_IPTV_EPG", ""),
 		IPTVRefresh:      time.Duration(envInt("CUBOZOA_IPTV_REFRESH_HOURS", 12)) * time.Hour,
+		IPTVAliases:      env("CUBOZOA_IPTV_EPG_ALIASES", ""),
 	}
 
 	if c.AdminUsername == "" {
