@@ -11,6 +11,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/audit"
 	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/config"
+	"github.com/obtuseaglet/cubozoa/internal/dvr"
 	"github.com/obtuseaglet/cubozoa/internal/livetv"
 	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/store"
@@ -27,6 +28,7 @@ type Server struct {
 	userData   *userdata.Service
 	transcoder *transcode.Manager // optional; nil disables transcoding
 	liveTV     *livetv.Service    // optional; nil disables Live TV
+	recorder   *dvr.Recorder      // optional; nil disables DVR
 	audit      *audit.Logger      // optional; nil discards audit events
 	log        *slog.Logger
 
@@ -43,6 +45,9 @@ func (s *Server) SetAudit(a *audit.Logger) { s.audit = a }
 
 // SetLiveTV attaches an IPTV/Live TV service. Nil leaves Live TV disabled.
 func (s *Server) SetLiveTV(l *livetv.Service) { s.liveTV = l }
+
+// SetRecorder attaches a DVR recorder. Nil leaves DVR disabled.
+func (s *Server) SetRecorder(r *dvr.Recorder) { s.recorder = r }
 
 // auditEvent records a security event if an audit logger is configured.
 func (s *Server) auditEvent(event string, attrs ...any) {

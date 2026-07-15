@@ -56,6 +56,13 @@ type Store interface {
 	UpsertUserItemData(d *UserItemData) error
 	ListUserItemData(userID string) ([]*UserItemData, error)
 
+	// DVR recordings/timers
+	CreateRecording(rec *Recording) error
+	GetRecording(id string) (*Recording, error)
+	ListRecordings() ([]*Recording, error)
+	UpdateRecording(rec *Recording) error
+	DeleteRecording(id string) error
+
 	// Close flushes and releases any resources held by the store.
 	Close() error
 }

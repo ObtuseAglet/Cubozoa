@@ -110,7 +110,15 @@ per channel (`Server.liveReencodeChannels`). PlaybackInfo returns an infinite
 MediaSource. An optional XMLTV guide (`CUBOZOA_IPTV_EPG`) fills `/LiveTv/Programs`
 and the currently-airing program is surfaced on each channel tile
 (`BaseItemDto.CurrentProgram`). Upstream URLs come from operator config, resolved
-server-side by channel ID (never client-supplied).
+server-side by channel ID (never client-supplied). Channel logos are proxied +
+cached from the `tvg-logo` URL via the item image endpoint. EPG acquisition is
+robust: gzip is decompressed transparently, comma-separated `CUBOZOA_IPTV_EPG`
+sources are merged, and the guide auto-discovers from the playlist header's
+`url-tvg` when unset. DVR (`internal/dvr`) records channels to
+`CUBOZOA_DATA_DIR/recordings` via ffmpeg on a schedule (persisted timers that
+resume after restart); `/LiveTv/Timers` (POST/GET/DELETE) and `/LiveTv/Recordings`
+back the client's DVR, and completed recordings play through recording-aware
+PlaybackInfo + `/Videos/{id}/stream`.
 
 Adaptive (multi-bitrate) HLS is in: `/Videos/{id}/master.m3u8` returns an ABR
 master playlist whose rungs come from `transcode.SelectRenditions(width,height,

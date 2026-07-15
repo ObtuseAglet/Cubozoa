@@ -20,6 +20,7 @@ import (
 	"github.com/obtuseaglet/cubozoa/internal/audit"
 	"github.com/obtuseaglet/cubozoa/internal/auth"
 	"github.com/obtuseaglet/cubozoa/internal/config"
+	"github.com/obtuseaglet/cubozoa/internal/dvr"
 	"github.com/obtuseaglet/cubozoa/internal/livetv"
 	"github.com/obtuseaglet/cubozoa/internal/media"
 	"github.com/obtuseaglet/cubozoa/internal/metadata"
@@ -132,6 +133,14 @@ func run(log *slog.Logger) error {
 		srv.SetLiveTV(ltv)
 		defer ltv.Close()
 		log.Info("Live TV enabled", "playlist", cfg.IPTVPlaylist, "epg", cfg.IPTVGuide != "")
+
+		// DVR needs ffmpeg to capture; enable it alongside Live TV when present.
+		if rec, ok := dvr.New(st, cfg.FFmpegPath, filepath.Join(cfg.DataDir, "recordings"), ltv, log); ok {
+			rec.Start()
+			srv.SetRecorder(rec)
+			defer rec.Close()
+			log.Info("DVR enabled", "dir", filepath.Join(cfg.DataDir, "recordings"))
+		}
 	}
 
 	httpServer := &http.Server{

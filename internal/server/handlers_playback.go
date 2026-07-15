@@ -20,6 +20,24 @@ import (
 // device profile and playback state — kilobytes at most.
 const maxPlaybackBody = 1 << 20 // 1 MiB
 
+// serveFile streams a file with the given content type, honoring Range/HEAD via
+// http.ServeContent.
+func (s *Server) serveFile(w http.ResponseWriter, r *http.Request, path, contentType string) {
+	f, err := os.Open(path)
+	if err != nil {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil || info.IsDir() {
+		s.writeError(w, http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	http.ServeContent(w, r, info.Name(), info.ModTime(), f)
+}
+
 // mediaSource builds the MediaSourceInfo advertised for an item. Direct play is
 // always offered; transcoding is additionally offered when ffmpeg is available,
 // letting the client pick. The token is embedded in the transcoding URL so the
@@ -108,6 +126,13 @@ func (s *Server) handlePlaybackInfo(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// A completed DVR recording plays directly from its file.
+	if s.recorder != nil {
+		if rec, ok := s.recorder.Recording(id); ok && rec.Status == store.RecCompleted {
+			s.recordingPlaybackInfo(w, rec.ID, rec.Name)
+			return
+		}
+	}
 
 	it, err := s.media.Item(id)
 	if err != nil {
@@ -150,6 +175,13 @@ func (s *Server) handleVideoStream(w http.ResponseWriter, r *http.Request) {
 
 	st, err := s.media.ItemStream(id)
 	if err != nil {
+		// Fall back to a completed DVR recording before giving up.
+		if s.recorder != nil {
+			if path, ok := s.recorder.StreamPath(id); ok {
+				s.serveFile(w, r, path, "video/mp2t")
+				return
+			}
+		}
 		if errors.Is(err, store.ErrNotFound) {
 			s.writeError(w, http.StatusNotFound)
 			return

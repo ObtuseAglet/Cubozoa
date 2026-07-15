@@ -220,8 +220,10 @@ interoperates with standard authenticator apps.
       Jellyfin clients (append the 6-digit code to your password), with
       authenticator-app enrollment and single-use recovery codes. *(done)*
 - [x] **Live TV (IPTV).** An M3U playlist becomes browsable, playable channels
-      in clients' Live TV section (upstream remuxed to HLS via ffmpeg), with an
-      optional XMLTV program guide. *(done)*
+      in clients' Live TV section (upstream remuxed to HLS via ffmpeg, with a
+      re-encode fallback), plus channel logos, an XMLTV program guide
+      (gzip/auto-discovery/multi-source) with now-playing on tiles, and
+      **DVR** — scheduled recordings that persist and play back. *(done)*
 - [x] **M4b — Transcoding & metadata.** ffprobe-sourced durations/codecs in
       browse and `PlaybackInfo`, plus on-demand HLS transcoding via ffmpeg —
       **seek-aware** and **adaptive (multi-bitrate)** with an ABR master

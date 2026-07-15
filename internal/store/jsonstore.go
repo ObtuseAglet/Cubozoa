@@ -17,25 +17,27 @@ import (
 // atomically (write-temp-then-rename) so a crash cannot leave a half-written
 // datastore.
 type jsonStore struct {
-	mu        sync.RWMutex
-	path      string
-	serverID  string
-	users     map[string]*User // keyed by user ID
-	sessions  map[string]*Session
-	libraries map[string]*Library      // keyed by library ID
-	items     map[string]*MediaItem    // keyed by item ID
-	userData  map[string]*UserItemData // keyed by userID + "\x00" + itemID
+	mu         sync.RWMutex
+	path       string
+	serverID   string
+	users      map[string]*User // keyed by user ID
+	sessions   map[string]*Session
+	libraries  map[string]*Library      // keyed by library ID
+	items      map[string]*MediaItem    // keyed by item ID
+	userData   map[string]*UserItemData // keyed by userID + "\x00" + itemID
+	recordings map[string]*Recording
 }
 
 // persisted is the on-disk schema. Versioned so future migrations are possible.
 type persisted struct {
-	Version   int                      `json:"version"`
-	ServerID  string                   `json:"server_id"`
-	Users     map[string]*User         `json:"users"`
-	Sessions  map[string]*Session      `json:"sessions"`
-	Libraries map[string]*Library      `json:"libraries"`
-	Items     map[string]*MediaItem    `json:"items"`
-	UserData  map[string]*UserItemData `json:"user_data"`
+	Version    int                      `json:"version"`
+	ServerID   string                   `json:"server_id"`
+	Users      map[string]*User         `json:"users"`
+	Sessions   map[string]*Session      `json:"sessions"`
+	Libraries  map[string]*Library      `json:"libraries"`
+	Items      map[string]*MediaItem    `json:"items"`
+	UserData   map[string]*UserItemData `json:"user_data"`
+	Recordings map[string]*Recording    `json:"recordings"`
 }
 
 // userDataKey composes the map key for a user/item pair.
@@ -52,12 +54,13 @@ func OpenJSON(dataDir string) (Store, error) {
 	}
 
 	s := &jsonStore{
-		path:      filepath.Join(dataDir, "cubozoa.json"),
-		users:     make(map[string]*User),
-		sessions:  make(map[string]*Session),
-		libraries: make(map[string]*Library),
-		items:     make(map[string]*MediaItem),
-		userData:  make(map[string]*UserItemData),
+		path:       filepath.Join(dataDir, "cubozoa.json"),
+		users:      make(map[string]*User),
+		sessions:   make(map[string]*Session),
+		libraries:  make(map[string]*Library),
+		items:      make(map[string]*MediaItem),
+		userData:   make(map[string]*UserItemData),
+		recordings: make(map[string]*Recording),
 	}
 
 	if err := s.load(); err != nil {
@@ -108,6 +111,9 @@ func (s *jsonStore) load() error {
 	if p.UserData != nil {
 		s.userData = p.UserData
 	}
+	if p.Recordings != nil {
+		s.recordings = p.Recordings
+	}
 	return nil
 }
 
@@ -115,13 +121,14 @@ func (s *jsonStore) load() error {
 // the write lock.
 func (s *jsonStore) flushLocked() error {
 	p := persisted{
-		Version:   schemaVersion,
-		ServerID:  s.serverID,
-		Users:     s.users,
-		Sessions:  s.sessions,
-		Libraries: s.libraries,
-		Items:     s.items,
-		UserData:  s.userData,
+		Version:    schemaVersion,
+		ServerID:   s.serverID,
+		Users:      s.users,
+		Sessions:   s.sessions,
+		Libraries:  s.libraries,
+		Items:      s.items,
+		UserData:   s.userData,
+		Recordings: s.recordings,
 	}
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
@@ -416,6 +423,57 @@ func (s *jsonStore) ListUserItemData(userID string) ([]*UserItemData, error) {
 		}
 	}
 	return out, nil
+}
+
+func (s *jsonStore) CreateRecording(rec *Recording) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	clone := *rec
+	s.recordings[rec.ID] = &clone
+	return s.flushLocked()
+}
+
+func (s *jsonStore) GetRecording(id string) (*Recording, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	rec, ok := s.recordings[id]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	clone := *rec
+	return &clone, nil
+}
+
+func (s *jsonStore) ListRecordings() ([]*Recording, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]*Recording, 0, len(s.recordings))
+	for _, rec := range s.recordings {
+		clone := *rec
+		out = append(out, &clone)
+	}
+	return out, nil
+}
+
+func (s *jsonStore) UpdateRecording(rec *Recording) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.recordings[rec.ID]; !ok {
+		return ErrNotFound
+	}
+	clone := *rec
+	s.recordings[rec.ID] = &clone
+	return s.flushLocked()
+}
+
+func (s *jsonStore) DeleteRecording(id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.recordings[id]; !ok {
+		return ErrNotFound
+	}
+	delete(s.recordings, id)
+	return s.flushLocked()
 }
 
 func (s *jsonStore) Close() error {
