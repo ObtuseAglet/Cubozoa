@@ -27,8 +27,14 @@ type Config struct {
 
 	// StoreBackend selects the persistence engine: "bolt" (default) is the
 	// embedded bbolt B+tree store; "json" is the legacy single-file store, kept
-	// for small deployments and debugging.
+	// for small deployments and debugging; "postgres" is an external PostgreSQL
+	// database for large/multi-node deployments (requires DatabaseURL).
 	StoreBackend string
+
+	// DatabaseURL is the PostgreSQL connection string used when StoreBackend is
+	// "postgres" (libpq/pgx URL or key/value DSN). It may contain credentials,
+	// so it is read only from the environment and never logged.
+	DatabaseURL string
 
 	// MediaDir, if set, is a root directory whose immediate subdirectories are
 	// auto-registered as libraries on startup (the Plex-like "point it at a
@@ -100,6 +106,7 @@ func Load() (*Config, error) {
 		BindAddress:      env("CUBOZOA_BIND_ADDRESS", ":8096"),
 		DataDir:          env("CUBOZOA_DATA_DIR", defaultDataDir()),
 		StoreBackend:     strings.ToLower(env("CUBOZOA_STORE", "bolt")),
+		DatabaseURL:      env("CUBOZOA_DATABASE_URL", ""),
 		MediaDir:         env("CUBOZOA_MEDIA_DIR", ""),
 		ServerName:       env("CUBOZOA_SERVER_NAME", defaultServerName()),
 		PublicBaseURL:    strings.TrimRight(env("CUBOZOA_PUBLIC_BASE_URL", ""), "/"),
@@ -130,8 +137,14 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("config: CUBOZOA_TLS_CERT_FILE and CUBOZOA_TLS_KEY_FILE must be set together")
 	}
 
-	if c.StoreBackend != "bolt" && c.StoreBackend != "json" {
-		return nil, fmt.Errorf("config: CUBOZOA_STORE must be \"bolt\" or \"json\", got %q", c.StoreBackend)
+	switch c.StoreBackend {
+	case "bolt", "json":
+	case "postgres":
+		if c.DatabaseURL == "" {
+			return nil, fmt.Errorf("config: CUBOZOA_STORE=postgres requires CUBOZOA_DATABASE_URL")
+		}
+	default:
+		return nil, fmt.Errorf("config: CUBOZOA_STORE must be \"bolt\", \"json\" or \"postgres\", got %q", c.StoreBackend)
 	}
 
 	abs, err := filepath.Abs(c.DataDir)

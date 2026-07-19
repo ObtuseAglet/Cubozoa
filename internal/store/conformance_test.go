@@ -1,17 +1,47 @@
 package store
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// testDatabaseURL is the connection string for a throwaway Postgres used by the
+// conformance suite. When unset, the Postgres backend is skipped (CI/dev without
+// a database still fully exercises JSON and bolt).
+func testDatabaseURL() string { return os.Getenv("CUBOZOA_TEST_DATABASE_URL") }
+
+// resetPostgres ensures the schema exists and truncates all data tables so each
+// test starts from an empty store.
+func resetPostgres(t *testing.T, url string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Fatalf("connect test db: %v", err)
+	}
+	defer pool.Close()
+	if _, err := pool.Exec(ctx, pgSchema); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`TRUNCATE users, sessions, libraries, items, user_item_data, recordings, series_timers`); err != nil {
+		t.Fatalf("truncate: %v", err)
+	}
+}
+
 // storeFactories yields a fresh, empty store of each implementation. Every
-// conformance test runs against all of them, guaranteeing the JSON and bbolt
-// backends are behaviorally identical.
+// conformance test runs against all of them, guaranteeing the backends are
+// behaviorally identical. Postgres is included only when CUBOZOA_TEST_DATABASE_URL
+// is set.
 func storeFactories() map[string]func(t *testing.T) Store {
-	return map[string]func(t *testing.T) Store{
+	factories := map[string]func(t *testing.T) Store{
 		"json": func(t *testing.T) Store {
 			s, err := OpenJSON(t.TempDir())
 			if err != nil {
@@ -29,6 +59,18 @@ func storeFactories() map[string]func(t *testing.T) Store {
 			return s
 		},
 	}
+	if url := testDatabaseURL(); url != "" {
+		factories["postgres"] = func(t *testing.T) Store {
+			resetPostgres(t, url)
+			s, err := OpenPostgres(url)
+			if err != nil {
+				t.Fatalf("OpenPostgres: %v", err)
+			}
+			t.Cleanup(func() { s.Close() })
+			return s
+		}
+	}
+	return factories
 }
 
 // forEachStore runs fn as a subtest against every backend.

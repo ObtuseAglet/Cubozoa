@@ -15,9 +15,9 @@ goals, in priority order: (1) security, (2) Jellyfin client compatibility,
   `internal/jellyfin` are what real clients deserialize. Changing them can break
   clients. When adding endpoints, match Jellyfin's request/response shapes.
 - **Keep the dependency surface tiny.** Current deps: Go stdlib +
-  `golang.org/x/crypto` + `go.etcd.io/bbolt` (embedded datastore; its only
-  transitive dep, `golang.org/x/sys`, was already indirect). Adding a dependency
-  is a security decision — justify it.
+  `golang.org/x/crypto` + `go.etcd.io/bbolt` (embedded datastore) +
+  `github.com/jackc/pgx/v5` (only used by the opt-in Postgres backend). Adding a
+  dependency is a security decision — justify it.
 
 ## Layout
 
@@ -25,7 +25,7 @@ goals, in priority order: (1) security, (2) Jellyfin client compatibility,
 cmd/cubozoa        entrypoint: config, wiring, hardened http.Server, signals
 internal/config    env-driven config, safe defaults
 internal/security  argon2id, secure tokens, constant-time compare  (crypto lives ONLY here)
-internal/store     Store interface + bbolt (default) and JSON impls; swap backends without touching callers
+internal/store     Store interface + bbolt (default), JSON, and Postgres impls; swap backends without touching callers
 internal/auth      seeding, credential verification, session lifecycle
 internal/media     library scanner + browse service (filesystem -> items)
 internal/userdata  per-user resume position, watched/favorite state
@@ -165,6 +165,16 @@ same assertions against both backends to guarantee parity; benchmarks
 than the JSON store. No SQL layer was added, so there is no query-language attack
 surface; bbolt's only transitive dep was already indirect.
 
-Open next: an optional Postgres backend (`jackc/pgx`) for large/multi-node
-deployments — the Store interface already supports it; it stays opt-in so the
-default single-binary deployment needs no external database.
+An optional Postgres backend is done (`internal/store/pgstore.go`, `jackc/pgx`):
+selected by `CUBOZOA_STORE=postgres` + `CUBOZOA_DATABASE_URL`, for large/multi-node
+deployments. It mirrors the bolt design — each entity is a `jsonb` blob keyed by
+ID with indexed columns only for the interface's lookup dimensions
+(`name_lower`, `token_hash`, `path`, item `library_id`/`parent_id`) — so the
+persisted shape stays owned by the Go models. Every query is parameterized
+(`$1`…), table names are compile-time constants, and unique violations map to
+`ErrConflict`; `ReplaceLibraryItems`/`DeleteLibrary`/`TouchSession` run in
+transactions. The schema is created on startup (`CREATE TABLE IF NOT EXISTS`) and
+the connection string is read only from the env, never logged. It stays opt-in
+so the default single-binary deployment (bolt) needs no external database. The
+shared `conformance_test.go` runs the same assertions against Postgres too when
+`CUBOZOA_TEST_DATABASE_URL` is set (skipped otherwise).

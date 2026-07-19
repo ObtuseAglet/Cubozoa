@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"testing"
 )
@@ -16,8 +17,25 @@ func benchStores(b *testing.B) map[string]Store {
 	if err != nil {
 		b.Fatal(err)
 	}
-	b.Cleanup(func() { js.Close(); bs.Close() })
-	return map[string]Store{"json": js, "bolt": bs}
+	stores := map[string]Store{"json": js, "bolt": bs}
+	if url := testDatabaseURL(); url != "" {
+		ps, err := OpenPostgres(url)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// Start from an empty schema so counts are deterministic.
+		if _, err := ps.(*pgStore).pool.Exec(context.Background(),
+			`TRUNCATE users, sessions, libraries, items, user_item_data, recordings, series_timers`); err != nil {
+			b.Fatal(err)
+		}
+		stores["postgres"] = ps
+	}
+	b.Cleanup(func() {
+		for _, s := range stores {
+			s.Close()
+		}
+	})
+	return stores
 }
 
 func seedLibrary(tb testing.TB, s Store, n int) {

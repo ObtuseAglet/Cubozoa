@@ -56,7 +56,7 @@ func run(log *slog.Logger) error {
 		"bind", cfg.BindAddress,
 	)
 
-	st, err := openStore(cfg.StoreBackend, cfg.DataDir)
+	st, err := openStore(cfg)
 	if err != nil {
 		return err
 	}
@@ -244,14 +244,16 @@ func openAuditWriter(path string) (io.Writer, func(), error) {
 // openStore opens the datastore backend selected by configuration. The backend
 // string is validated in config.Load, so the default arm is unreachable in
 // practice; it exists to fail loudly rather than silently pick one.
-func openStore(backend, dataDir string) (store.Store, error) {
-	switch backend {
+func openStore(cfg *config.Config) (store.Store, error) {
+	switch cfg.StoreBackend {
 	case "json":
-		return store.OpenJSON(dataDir)
+		return store.OpenJSON(cfg.DataDir)
 	case "bolt":
-		return store.OpenBolt(dataDir)
+		return store.OpenBolt(cfg.DataDir)
+	case "postgres":
+		return store.OpenPostgres(cfg.DatabaseURL)
 	default:
-		return nil, fmt.Errorf("unknown store backend %q", backend)
+		return nil, fmt.Errorf("unknown store backend %q", cfg.StoreBackend)
 	}
 }
 
